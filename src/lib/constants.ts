@@ -1,5 +1,13 @@
-export const DEFAULT_REP_NAMES = [
-  'Cody', 'Will', 'Jordy', 'Colin', 'Naylor', 'Harrison', 'Jenna', 'Viridiana'
+// Deterministic IDs so all clients initialize with the same rep IDs
+export const DEFAULT_REPS = [
+  { id: 'rep-cody', name: 'Cody' },
+  { id: 'rep-will', name: 'Will' },
+  { id: 'rep-jordy', name: 'Jordy' },
+  { id: 'rep-colin', name: 'Colin' },
+  { id: 'rep-naylor', name: 'Naylor' },
+  { id: 'rep-harrison', name: 'Harrison' },
+  { id: 'rep-jenna', name: 'Jenna' },
+  { id: 'rep-viridiana', name: 'Viridiana' },
 ];
 
 export const POINT_VALUES = {

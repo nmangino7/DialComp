@@ -2,6 +2,7 @@
 
 import { Fragment } from 'react';
 import { Rep, TrackerEntry, TrackerMetric, Period } from '@/lib/types';
+import EditableCell from './EditableCell';
 
 interface Props {
   reps: Rep[];
@@ -19,47 +20,6 @@ const RANK_STYLES = [
 
 const RANK_BADGES = ['🥇', '🥈', '🥉'];
 
-function Cell({
-  value,
-  onInc,
-  onDec,
-  onSet,
-}: {
-  value: number;
-  onInc: () => void;
-  onDec: () => void;
-  onSet: (v: number) => void;
-}) {
-  return (
-    <td className="px-1 py-2 text-center">
-      <div className="flex items-center justify-center gap-1">
-        <button
-          onClick={onDec}
-          className="w-6 h-6 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold transition-colors flex items-center justify-center"
-        >
-          −
-        </button>
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => {
-            const parsed = parseInt(e.target.value, 10);
-            onSet(isNaN(parsed) ? 0 : parsed);
-          }}
-          className="w-12 text-center font-semibold text-white tabular-nums bg-slate-700/50 rounded px-1 py-0.5 border border-slate-600 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          min={0}
-        />
-        <button
-          onClick={onInc}
-          className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center justify-center"
-        >
-          +
-        </button>
-      </div>
-    </td>
-  );
-}
-
 function TotalCell({ value }: { value: number }) {
   return (
     <td className="px-2 py-2 text-center font-bold text-white tabular-nums">
@@ -69,7 +29,6 @@ function TotalCell({ value }: { value: number }) {
 }
 
 export default function CompetitionTracker({ reps, entries, onIncrement, onDecrement, onSet }: Props) {
-  // Sort by total dials descending
   const sorted = [...entries].sort((a, b) => {
     const totalA = a.dials.morning + a.dials.afternoon;
     const totalB = b.dials.morning + b.dials.afternoon;
@@ -83,15 +42,9 @@ export default function CompetitionTracker({ reps, entries, onIncrement, onDecre
           <tr className="text-slate-400 uppercase text-xs tracking-wider">
             <th className="px-3 py-3 text-left">#</th>
             <th className="px-3 py-3 text-left">Rep</th>
-            <th colSpan={3} className="px-2 py-3 text-center border-b-2 border-blue-500/30">
-              Dials
-            </th>
-            <th colSpan={3} className="px-2 py-3 text-center border-b-2 border-emerald-500/30">
-              Pick Ups
-            </th>
-            <th colSpan={3} className="px-2 py-3 text-center border-b-2 border-purple-500/30">
-              Sets
-            </th>
+            <th colSpan={3} className="px-2 py-3 text-center border-b-2 border-blue-500/30">Dials</th>
+            <th colSpan={3} className="px-2 py-3 text-center border-b-2 border-emerald-500/30">Pick Ups</th>
+            <th colSpan={3} className="px-2 py-3 text-center border-b-2 border-purple-500/30">Sets</th>
           </tr>
           <tr className="text-slate-500 text-xs">
             <th></th>
@@ -131,21 +84,19 @@ export default function CompetitionTracker({ reps, entries, onIncrement, onDecre
                 </td>
                 {metrics.map((metric) => (
                   <Fragment key={metric}>
-                    <Cell
+                    <EditableCell
                       value={entry[metric].morning}
                       onInc={() => onIncrement(rep.id, metric, 'morning')}
                       onDec={() => onDecrement(rep.id, metric, 'morning')}
                       onSet={(v) => onSet(rep.id, metric, 'morning', v)}
                     />
-                    <Cell
+                    <EditableCell
                       value={entry[metric].afternoon}
                       onInc={() => onIncrement(rep.id, metric, 'afternoon')}
                       onDec={() => onDecrement(rep.id, metric, 'afternoon')}
                       onSet={(v) => onSet(rep.id, metric, 'afternoon', v)}
                     />
-                    <TotalCell
-                      value={entry[metric].morning + entry[metric].afternoon}
-                    />
+                    <TotalCell value={entry[metric].morning + entry[metric].afternoon} />
                   </Fragment>
                 ))}
               </tr>

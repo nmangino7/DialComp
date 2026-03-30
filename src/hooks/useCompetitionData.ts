@@ -10,7 +10,7 @@ import {
   PointsMetric,
   Period,
 } from '@/lib/types';
-import { DEFAULT_REP_NAMES } from '@/lib/constants';
+import { DEFAULT_REPS } from '@/lib/constants';
 import { loadState, saveState } from '@/lib/storage';
 import { fetchState, sendAction } from '@/lib/api';
 
@@ -38,12 +38,11 @@ function createPointsEntry(repId: string): PointsEntry {
 }
 
 function createInitialState(): CompetitionState {
-  const reps = DEFAULT_REP_NAMES.map(createRep);
   return {
-    reps,
-    trackerEntries: reps.map((r) => createTrackerEntry(r.id)),
-    pointsEntries: reps.map((r) => createPointsEntry(r.id)),
-    pointsParticipantIds: reps.map((r) => r.id),
+    reps: DEFAULT_REPS,
+    trackerEntries: DEFAULT_REPS.map((r) => createTrackerEntry(r.id)),
+    pointsEntries: DEFAULT_REPS.map((r) => createPointsEntry(r.id)),
+    pointsParticipantIds: DEFAULT_REPS.map((r) => r.id),
     date: new Date().toISOString().split('T')[0],
   };
 }

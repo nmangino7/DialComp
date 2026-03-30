@@ -3,6 +3,7 @@
 import { Fragment } from 'react';
 import { Rep, PointsEntry, PointsMetric, Period } from '@/lib/types';
 import { calculatePoints } from '@/lib/points';
+import EditableCell from './EditableCell';
 
 interface Props {
   reps: Rep[];
@@ -28,47 +29,6 @@ const METRIC_LABELS: { key: PointsMetric; label: string; color: string }[] = [
   { key: 'notInterested', label: 'Not Int. (-1)', color: 'border-orange-500/30' },
   { key: 'sets', label: 'Sets (+10)', color: 'border-emerald-500/30' },
 ];
-
-function Cell({
-  value,
-  onInc,
-  onDec,
-  onSet,
-}: {
-  value: number;
-  onInc: () => void;
-  onDec: () => void;
-  onSet: (v: number) => void;
-}) {
-  return (
-    <td className="px-1 py-2 text-center">
-      <div className="flex items-center justify-center gap-1">
-        <button
-          onClick={onDec}
-          className="w-6 h-6 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold transition-colors flex items-center justify-center"
-        >
-          −
-        </button>
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => {
-            const parsed = parseInt(e.target.value, 10);
-            onSet(isNaN(parsed) ? 0 : parsed);
-          }}
-          className="w-12 text-center font-semibold text-white tabular-nums bg-slate-700/50 rounded px-1 py-0.5 border border-slate-600 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          min={0}
-        />
-        <button
-          onClick={onInc}
-          className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center justify-center"
-        >
-          +
-        </button>
-      </div>
-    </td>
-  );
-}
 
 function TotalCell({ value }: { value: number }) {
   return (
@@ -127,17 +87,11 @@ export default function PointsCompetition({
               <th className="px-3 py-3 text-left">#</th>
               <th className="px-3 py-3 text-left">Rep</th>
               {METRIC_LABELS.map((m) => (
-                <th
-                  key={m.key}
-                  colSpan={3}
-                  className={`px-2 py-3 text-center border-b-2 ${m.color}`}
-                >
+                <th key={m.key} colSpan={3} className={`px-2 py-3 text-center border-b-2 ${m.color}`}>
                   {m.label}
                 </th>
               ))}
-              <th className="px-3 py-3 text-center border-b-2 border-yellow-500/30">
-                Points
-              </th>
+              <th className="px-3 py-3 text-center border-b-2 border-yellow-500/30">Points</th>
             </tr>
             <tr className="text-slate-500 text-xs">
               <th></th>
@@ -176,21 +130,19 @@ export default function PointsCompetition({
                   </td>
                   {METRIC_LABELS.map((m) => (
                     <Fragment key={m.key}>
-                      <Cell
+                      <EditableCell
                         value={entry[m.key].morning}
                         onInc={() => onIncrement(rep.id, m.key, 'morning')}
                         onDec={() => onDecrement(rep.id, m.key, 'morning')}
                         onSet={(v) => onSet(rep.id, m.key, 'morning', v)}
                       />
-                      <Cell
+                      <EditableCell
                         value={entry[m.key].afternoon}
                         onInc={() => onIncrement(rep.id, m.key, 'afternoon')}
                         onDec={() => onDecrement(rep.id, m.key, 'afternoon')}
                         onSet={(v) => onSet(rep.id, m.key, 'afternoon', v)}
                       />
-                      <TotalCell
-                        value={entry[m.key].morning + entry[m.key].afternoon}
-                      />
+                      <TotalCell value={entry[m.key].morning + entry[m.key].afternoon} />
                     </Fragment>
                   ))}
                   <td
