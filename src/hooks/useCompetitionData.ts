@@ -12,7 +12,7 @@ import {
 } from '@/lib/types';
 import { DEFAULT_REP_NAMES } from '@/lib/constants';
 import { loadState, saveState } from '@/lib/storage';
-import { fetchState, pushState } from '@/lib/api';
+import { fetchState, sendAction } from '@/lib/api';
 
 function createRep(name: string): Rep {
   return { id: crypto.randomUUID(), name };
@@ -56,7 +56,7 @@ type Action =
   | { type: 'INCREMENT_POINTS'; repId: string; metric: PointsMetric; period: Period }
   | { type: 'DECREMENT_POINTS'; repId: string; metric: PointsMetric; period: Period }
   | { type: 'SET_POINTS'; repId: string; metric: PointsMetric; period: Period; value: number }
-  | { type: 'ADD_REP'; name: string }
+  | { type: 'ADD_REP'; name: string; id: string }
   | { type: 'TOGGLE_POINTS_PARTICIPANT'; repId: string }
   | { type: 'RESET_DAY' };
 
@@ -65,116 +65,74 @@ function reducer(state: CompetitionState, action: Action): CompetitionState {
     case 'LOAD':
       return action.state;
 
-    case 'INCREMENT_TRACKER': {
+    case 'INCREMENT_TRACKER':
       return {
         ...state,
         trackerEntries: state.trackerEntries.map((e) =>
           e.repId === action.repId
-            ? {
-                ...e,
-                [action.metric]: {
-                  ...e[action.metric],
-                  [action.period]: e[action.metric][action.period] + 1,
-                },
-              }
+            ? { ...e, [action.metric]: { ...e[action.metric], [action.period]: e[action.metric][action.period] + 1 } }
             : e
         ),
       };
-    }
 
-    case 'DECREMENT_TRACKER': {
+    case 'DECREMENT_TRACKER':
       return {
         ...state,
         trackerEntries: state.trackerEntries.map((e) =>
           e.repId === action.repId
-            ? {
-                ...e,
-                [action.metric]: {
-                  ...e[action.metric],
-                  [action.period]: Math.max(0, e[action.metric][action.period] - 1),
-                },
-              }
+            ? { ...e, [action.metric]: { ...e[action.metric], [action.period]: Math.max(0, e[action.metric][action.period] - 1) } }
             : e
         ),
       };
-    }
 
-    case 'SET_TRACKER': {
+    case 'SET_TRACKER':
       return {
         ...state,
         trackerEntries: state.trackerEntries.map((e) =>
           e.repId === action.repId
-            ? {
-                ...e,
-                [action.metric]: {
-                  ...e[action.metric],
-                  [action.period]: Math.max(0, action.value),
-                },
-              }
+            ? { ...e, [action.metric]: { ...e[action.metric], [action.period]: Math.max(0, action.value) } }
             : e
         ),
       };
-    }
 
-    case 'INCREMENT_POINTS': {
+    case 'INCREMENT_POINTS':
       return {
         ...state,
         pointsEntries: state.pointsEntries.map((e) =>
           e.repId === action.repId
-            ? {
-                ...e,
-                [action.metric]: {
-                  ...e[action.metric],
-                  [action.period]: e[action.metric][action.period] + 1,
-                },
-              }
+            ? { ...e, [action.metric]: { ...e[action.metric], [action.period]: e[action.metric][action.period] + 1 } }
             : e
         ),
       };
-    }
 
-    case 'DECREMENT_POINTS': {
+    case 'DECREMENT_POINTS':
       return {
         ...state,
         pointsEntries: state.pointsEntries.map((e) =>
           e.repId === action.repId
-            ? {
-                ...e,
-                [action.metric]: {
-                  ...e[action.metric],
-                  [action.period]: Math.max(0, e[action.metric][action.period] - 1),
-                },
-              }
+            ? { ...e, [action.metric]: { ...e[action.metric], [action.period]: Math.max(0, e[action.metric][action.period] - 1) } }
             : e
         ),
       };
-    }
 
-    case 'SET_POINTS': {
+    case 'SET_POINTS':
       return {
         ...state,
         pointsEntries: state.pointsEntries.map((e) =>
           e.repId === action.repId
-            ? {
-                ...e,
-                [action.metric]: {
-                  ...e[action.metric],
-                  [action.period]: Math.max(0, action.value),
-                },
-              }
+            ? { ...e, [action.metric]: { ...e[action.metric], [action.period]: Math.max(0, action.value) } }
             : e
         ),
       };
-    }
 
     case 'ADD_REP': {
-      const rep = createRep(action.name);
+      const newRep = { id: action.id, name: action.name };
       return {
         ...state,
-        reps: [...state.reps, rep],
-        trackerEntries: [...state.trackerEntries, createTrackerEntry(rep.id)],
-        pointsEntries: [...state.pointsEntries, createPointsEntry(rep.id)],
-        pointsParticipantIds: [...state.pointsParticipantIds, rep.id],
+        reps: [...state.reps, newRep],
+        trackerEntries: [...state.trackerEntries, createTrackerEntry(newRep.id)],
+        pointsEntries: [...state.pointsEntries, createPointsEntry(newRep.id)],
+        pointsParticipantIds: [...state.pointsParticipantIds, newRep.id],
       };
     }
 
@@ -188,28 +146,45 @@ function reducer(state: CompetitionState, action: Action): CompetitionState {
       };
     }
 
-    case 'RESET_DAY': {
+    case 'RESET_DAY':
       return {
         ...state,
         trackerEntries: state.reps.map((r) => createTrackerEntry(r.id)),
         pointsEntries: state.reps.map((r) => createPointsEntry(r.id)),
         date: new Date().toISOString().split('T')[0],
       };
-    }
 
     default:
       return state;
   }
 }
 
+// Dispatch locally for instant UI, then send action to server
+function useServerAction(
+  dispatch: React.Dispatch<Action>,
+  stateRef: React.RefObject<CompetitionState>,
+) {
+  return useCallback(
+    (action: Action) => {
+      // Apply locally for instant feedback
+      dispatch(action);
+
+      // Send action to server (fire-and-forget, server applies to its own copy)
+      const date = stateRef.current.date;
+      const { ...serverAction } = action;
+      sendAction(date, serverAction);
+    },
+    [dispatch, stateRef],
+  );
+}
+
 export function useCompetitionData() {
   const [state, dispatch] = useReducer(reducer, null, createInitialState);
   const [mounted, setMounted] = useState(false);
   const stateRef = useRef(state);
-  const isPollingUpdate = useRef(false);
-
-  // Keep stateRef current
   stateRef.current = state;
+
+  const dispatchWithServer = useServerAction(dispatch, stateRef);
 
   // Load from localStorage immediately, then fetch from API
   useEffect(() => {
@@ -227,25 +202,22 @@ export function useCompetitionData() {
       if (remote && remote.date === today) {
         dispatch({ type: 'LOAD', state: remote });
         saveState(remote);
+      } else {
+        // No server state yet — initialize it
+        const initial = stateRef.current;
+        sendAction(today, { type: 'INIT', state: initial });
       }
     });
   }, []);
 
-  // Persist to localStorage + push to API on every local change
+  // Save to localStorage whenever state changes
   useEffect(() => {
-    if (!mounted) return;
-
-    // Skip pushing to API if this change came from polling
-    if (isPollingUpdate.current) {
-      isPollingUpdate.current = false;
-      return;
+    if (mounted) {
+      saveState(state);
     }
-
-    saveState(state);
-    pushState(state); // fire-and-forget
   }, [state, mounted]);
 
-  // Poll for remote changes every 5 seconds
+  // Poll for remote changes every 3 seconds
   useEffect(() => {
     if (!mounted) return;
 
@@ -253,62 +225,68 @@ export function useCompetitionData() {
       const today = new Date().toISOString().split('T')[0];
       const remote = await fetchState(today);
       if (remote && JSON.stringify(remote) !== JSON.stringify(stateRef.current)) {
-        isPollingUpdate.current = true;
         dispatch({ type: 'LOAD', state: remote });
         saveState(remote);
       }
-    }, 5000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [mounted]);
 
   const incrementTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period) =>
-      dispatch({ type: 'INCREMENT_TRACKER', repId, metric, period }),
-    []
+      dispatchWithServer({ type: 'INCREMENT_TRACKER', repId, metric, period }),
+    [dispatchWithServer]
   );
 
   const decrementTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period) =>
-      dispatch({ type: 'DECREMENT_TRACKER', repId, metric, period }),
-    []
+      dispatchWithServer({ type: 'DECREMENT_TRACKER', repId, metric, period }),
+    [dispatchWithServer]
   );
 
   const setTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period, value: number) =>
-      dispatch({ type: 'SET_TRACKER', repId, metric, period, value }),
-    []
+      dispatchWithServer({ type: 'SET_TRACKER', repId, metric, period, value }),
+    [dispatchWithServer]
   );
 
   const incrementPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period) =>
-      dispatch({ type: 'INCREMENT_POINTS', repId, metric, period }),
-    []
+      dispatchWithServer({ type: 'INCREMENT_POINTS', repId, metric, period }),
+    [dispatchWithServer]
   );
 
   const decrementPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period) =>
-      dispatch({ type: 'DECREMENT_POINTS', repId, metric, period }),
-    []
+      dispatchWithServer({ type: 'DECREMENT_POINTS', repId, metric, period }),
+    [dispatchWithServer]
   );
 
   const setPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period, value: number) =>
-      dispatch({ type: 'SET_POINTS', repId, metric, period, value }),
-    []
+      dispatchWithServer({ type: 'SET_POINTS', repId, metric, period, value }),
+    [dispatchWithServer]
   );
 
   const addRep = useCallback(
-    (name: string) => dispatch({ type: 'ADD_REP', name }),
-    []
+    (name: string) => {
+      const id = crypto.randomUUID();
+      dispatchWithServer({ type: 'ADD_REP', name, id });
+    },
+    [dispatchWithServer]
   );
 
   const toggleParticipant = useCallback(
-    (repId: string) => dispatch({ type: 'TOGGLE_POINTS_PARTICIPANT', repId }),
-    []
+    (repId: string) =>
+      dispatchWithServer({ type: 'TOGGLE_POINTS_PARTICIPANT', repId }),
+    [dispatchWithServer]
   );
 
-  const resetDay = useCallback(() => dispatch({ type: 'RESET_DAY' }), []);
+  const resetDay = useCallback(
+    () => dispatchWithServer({ type: 'RESET_DAY' }),
+    [dispatchWithServer]
+  );
 
   return {
     state,
