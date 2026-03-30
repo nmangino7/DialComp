@@ -1,6 +1,6 @@
 'use client';
 
-import { useReducer, useEffect, useState, useCallback } from 'react';
+import { useReducer, useEffect, useState, useCallback, useRef } from 'react';
 import {
   CompetitionState,
   Rep,
@@ -12,6 +12,7 @@ import {
 } from '@/lib/types';
 import { DEFAULT_REP_NAMES } from '@/lib/constants';
 import { loadState, saveState } from '@/lib/storage';
+import { fetchState, pushState } from '@/lib/api';
 
 function createRep(name: string): Rep {
   return { id: crypto.randomUUID(), name };
@@ -168,23 +169,62 @@ function reducer(state: CompetitionState, action: Action): CompetitionState {
 export function useCompetitionData() {
   const [state, dispatch] = useReducer(reducer, null, createInitialState);
   const [mounted, setMounted] = useState(false);
+  const stateRef = useRef(state);
+  const isPollingUpdate = useRef(false);
 
-  // Load from localStorage on mount
+  // Keep stateRef current
+  stateRef.current = state;
+
+  // Load from localStorage immediately, then fetch from API
   useEffect(() => {
-    const saved = loadState();
     const today = new Date().toISOString().split('T')[0];
+
+    // Step 1: localStorage for instant render
+    const saved = loadState();
     if (saved && saved.date === today) {
       dispatch({ type: 'LOAD', state: saved });
     }
     setMounted(true);
+
+    // Step 2: Fetch from API (async)
+    fetchState(today).then((remote) => {
+      if (remote && remote.date === today) {
+        dispatch({ type: 'LOAD', state: remote });
+        saveState(remote);
+      }
+    });
   }, []);
 
-  // Persist on every change after mount
+  // Persist to localStorage + push to API on every local change
   useEffect(() => {
-    if (mounted) {
-      saveState(state);
+    if (!mounted) return;
+
+    // Skip pushing to API if this change came from polling
+    if (isPollingUpdate.current) {
+      isPollingUpdate.current = false;
+      return;
     }
+
+    saveState(state);
+    pushState(state); // fire-and-forget
   }, [state, mounted]);
+
+  // Poll for remote changes every 5 seconds
+  useEffect(() => {
+    if (!mounted) return;
+
+    const interval = setInterval(async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const remote = await fetchState(today);
+      if (remote && JSON.stringify(remote) !== JSON.stringify(stateRef.current)) {
+        isPollingUpdate.current = true;
+        dispatch({ type: 'LOAD', state: remote });
+        saveState(remote);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [mounted]);
 
   const incrementTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period) =>
