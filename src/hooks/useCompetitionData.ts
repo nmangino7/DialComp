@@ -52,8 +52,10 @@ type Action =
   | { type: 'LOAD'; state: CompetitionState }
   | { type: 'INCREMENT_TRACKER'; repId: string; metric: TrackerMetric; period: Period }
   | { type: 'DECREMENT_TRACKER'; repId: string; metric: TrackerMetric; period: Period }
+  | { type: 'SET_TRACKER'; repId: string; metric: TrackerMetric; period: Period; value: number }
   | { type: 'INCREMENT_POINTS'; repId: string; metric: PointsMetric; period: Period }
   | { type: 'DECREMENT_POINTS'; repId: string; metric: PointsMetric; period: Period }
+  | { type: 'SET_POINTS'; repId: string; metric: PointsMetric; period: Period; value: number }
   | { type: 'ADD_REP'; name: string }
   | { type: 'TOGGLE_POINTS_PARTICIPANT'; repId: string }
   | { type: 'RESET_DAY' };
@@ -97,6 +99,23 @@ function reducer(state: CompetitionState, action: Action): CompetitionState {
       };
     }
 
+    case 'SET_TRACKER': {
+      return {
+        ...state,
+        trackerEntries: state.trackerEntries.map((e) =>
+          e.repId === action.repId
+            ? {
+                ...e,
+                [action.metric]: {
+                  ...e[action.metric],
+                  [action.period]: Math.max(0, action.value),
+                },
+              }
+            : e
+        ),
+      };
+    }
+
     case 'INCREMENT_POINTS': {
       return {
         ...state,
@@ -124,6 +143,23 @@ function reducer(state: CompetitionState, action: Action): CompetitionState {
                 [action.metric]: {
                   ...e[action.metric],
                   [action.period]: Math.max(0, e[action.metric][action.period] - 1),
+                },
+              }
+            : e
+        ),
+      };
+    }
+
+    case 'SET_POINTS': {
+      return {
+        ...state,
+        pointsEntries: state.pointsEntries.map((e) =>
+          e.repId === action.repId
+            ? {
+                ...e,
+                [action.metric]: {
+                  ...e[action.metric],
+                  [action.period]: Math.max(0, action.value),
                 },
               }
             : e
@@ -238,6 +274,12 @@ export function useCompetitionData() {
     []
   );
 
+  const setTracker = useCallback(
+    (repId: string, metric: TrackerMetric, period: Period, value: number) =>
+      dispatch({ type: 'SET_TRACKER', repId, metric, period, value }),
+    []
+  );
+
   const incrementPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period) =>
       dispatch({ type: 'INCREMENT_POINTS', repId, metric, period }),
@@ -247,6 +289,12 @@ export function useCompetitionData() {
   const decrementPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period) =>
       dispatch({ type: 'DECREMENT_POINTS', repId, metric, period }),
+    []
+  );
+
+  const setPoints = useCallback(
+    (repId: string, metric: PointsMetric, period: Period, value: number) =>
+      dispatch({ type: 'SET_POINTS', repId, metric, period, value }),
     []
   );
 
@@ -267,8 +315,10 @@ export function useCompetitionData() {
     mounted,
     incrementTracker,
     decrementTracker,
+    setTracker,
     incrementPoints,
     decrementPoints,
+    setPoints,
     addRep,
     toggleParticipant,
     resetDay,

@@ -13,8 +13,10 @@ export default function Dashboard() {
     mounted,
     incrementTracker,
     decrementTracker,
+    setTracker,
     incrementPoints,
     decrementPoints,
+    setPoints,
     addRep,
     toggleParticipant,
     resetDay,
@@ -102,6 +104,7 @@ export default function Dashboard() {
               entries={state.trackerEntries}
               onIncrement={incrementTracker}
               onDecrement={decrementTracker}
+              onSet={setTracker}
             />
           ) : (
             <PointsCompetition
@@ -110,6 +113,7 @@ export default function Dashboard() {
               participantIds={state.pointsParticipantIds}
               onIncrement={incrementPoints}
               onDecrement={decrementPoints}
+              onSet={setPoints}
               onToggleParticipant={toggleParticipant}
             />
           )}

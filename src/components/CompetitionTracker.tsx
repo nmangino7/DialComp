@@ -8,6 +8,7 @@ interface Props {
   entries: TrackerEntry[];
   onIncrement: (repId: string, metric: TrackerMetric, period: Period) => void;
   onDecrement: (repId: string, metric: TrackerMetric, period: Period) => void;
+  onSet: (repId: string, metric: TrackerMetric, period: Period, value: number) => void;
 }
 
 const RANK_STYLES = [
@@ -22,10 +23,12 @@ function Cell({
   value,
   onInc,
   onDec,
+  onSet,
 }: {
   value: number;
   onInc: () => void;
   onDec: () => void;
+  onSet: (v: number) => void;
 }) {
   return (
     <td className="px-1 py-2 text-center">
@@ -36,9 +39,16 @@ function Cell({
         >
           −
         </button>
-        <span className="w-8 text-center font-semibold text-white tabular-nums">
-          {value}
-        </span>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => {
+            const parsed = parseInt(e.target.value, 10);
+            onSet(isNaN(parsed) ? 0 : parsed);
+          }}
+          className="w-12 text-center font-semibold text-white tabular-nums bg-slate-700/50 rounded px-1 py-0.5 border border-slate-600 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          min={0}
+        />
         <button
           onClick={onInc}
           className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center justify-center"
@@ -58,7 +68,7 @@ function TotalCell({ value }: { value: number }) {
   );
 }
 
-export default function CompetitionTracker({ reps, entries, onIncrement, onDecrement }: Props) {
+export default function CompetitionTracker({ reps, entries, onIncrement, onDecrement, onSet }: Props) {
   // Sort by total dials descending
   const sorted = [...entries].sort((a, b) => {
     const totalA = a.dials.morning + a.dials.afternoon;
@@ -125,11 +135,13 @@ export default function CompetitionTracker({ reps, entries, onIncrement, onDecre
                       value={entry[metric].morning}
                       onInc={() => onIncrement(rep.id, metric, 'morning')}
                       onDec={() => onDecrement(rep.id, metric, 'morning')}
+                      onSet={(v) => onSet(rep.id, metric, 'morning', v)}
                     />
                     <Cell
                       value={entry[metric].afternoon}
                       onInc={() => onIncrement(rep.id, metric, 'afternoon')}
                       onDec={() => onDecrement(rep.id, metric, 'afternoon')}
+                      onSet={(v) => onSet(rep.id, metric, 'afternoon', v)}
                     />
                     <TotalCell
                       value={entry[metric].morning + entry[metric].afternoon}

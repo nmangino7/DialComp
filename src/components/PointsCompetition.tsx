@@ -10,6 +10,7 @@ interface Props {
   participantIds: string[];
   onIncrement: (repId: string, metric: PointsMetric, period: Period) => void;
   onDecrement: (repId: string, metric: PointsMetric, period: Period) => void;
+  onSet: (repId: string, metric: PointsMetric, period: Period, value: number) => void;
   onToggleParticipant: (repId: string) => void;
 }
 
@@ -32,10 +33,12 @@ function Cell({
   value,
   onInc,
   onDec,
+  onSet,
 }: {
   value: number;
   onInc: () => void;
   onDec: () => void;
+  onSet: (v: number) => void;
 }) {
   return (
     <td className="px-1 py-2 text-center">
@@ -46,9 +49,16 @@ function Cell({
         >
           −
         </button>
-        <span className="w-8 text-center font-semibold text-white tabular-nums">
-          {value}
-        </span>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => {
+            const parsed = parseInt(e.target.value, 10);
+            onSet(isNaN(parsed) ? 0 : parsed);
+          }}
+          className="w-12 text-center font-semibold text-white tabular-nums bg-slate-700/50 rounded px-1 py-0.5 border border-slate-600 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          min={0}
+        />
         <button
           onClick={onInc}
           className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center justify-center"
@@ -74,6 +84,7 @@ export default function PointsCompetition({
   participantIds,
   onIncrement,
   onDecrement,
+  onSet,
   onToggleParticipant,
 }: Props) {
   const activeEntries = entries.filter((e) => participantIds.includes(e.repId));
@@ -169,11 +180,13 @@ export default function PointsCompetition({
                         value={entry[m.key].morning}
                         onInc={() => onIncrement(rep.id, m.key, 'morning')}
                         onDec={() => onDecrement(rep.id, m.key, 'morning')}
+                        onSet={(v) => onSet(rep.id, m.key, 'morning', v)}
                       />
                       <Cell
                         value={entry[m.key].afternoon}
                         onInc={() => onIncrement(rep.id, m.key, 'afternoon')}
                         onDec={() => onDecrement(rep.id, m.key, 'afternoon')}
+                        onSet={(v) => onSet(rep.id, m.key, 'afternoon', v)}
                       />
                       <TotalCell
                         value={entry[m.key].morning + entry[m.key].afternoon}
