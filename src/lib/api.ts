@@ -11,8 +11,10 @@ export async function fetchState(date: string): Promise<CompetitionState | null>
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function sendAction(date: string, action: Record<string, any>): Promise<CompetitionState | null> {
+export async function sendAction(
+  date: string,
+  action: { type: string; [key: string]: unknown },
+): Promise<CompetitionState | null> {
   try {
     const res = await fetch('/api/state', {
       method: 'POST',

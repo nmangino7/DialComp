@@ -3,20 +3,14 @@
 import { useReducer, useEffect, useState, useCallback, useRef } from 'react';
 import {
   CompetitionState,
-  Rep,
   TrackerEntry,
   PointsEntry,
   TrackerMetric,
   PointsMetric,
   Period,
 } from '@/lib/types';
-import { DEFAULT_REPS } from '@/lib/constants';
-import { loadState, saveState } from '@/lib/storage';
+import { STORAGE_KEY, MY_REP_KEY } from '@/lib/constants';
 import { fetchState, sendAction } from '@/lib/api';
-
-function createRep(name: string): Rep {
-  return { id: crypto.randomUUID(), name };
-}
 
 function createTrackerEntry(repId: string): TrackerEntry {
   return {
@@ -37,12 +31,12 @@ function createPointsEntry(repId: string): PointsEntry {
   };
 }
 
-function createInitialState(): CompetitionState {
+function emptyState(): CompetitionState {
   return {
-    reps: DEFAULT_REPS,
-    trackerEntries: DEFAULT_REPS.map((r) => createTrackerEntry(r.id)),
-    pointsEntries: DEFAULT_REPS.map((r) => createPointsEntry(r.id)),
-    pointsParticipantIds: DEFAULT_REPS.map((r) => r.id),
+    reps: [],
+    trackerEntries: [],
+    pointsEntries: [],
+    pointsParticipantIds: [],
     date: new Date().toISOString().split('T')[0],
   };
 }
@@ -158,65 +152,66 @@ function reducer(state: CompetitionState, action: Action): CompetitionState {
   }
 }
 
-// Dispatch locally for instant UI, then send action to server
-function useServerAction(
+function dispatchAndSync(
   dispatch: React.Dispatch<Action>,
   stateRef: React.RefObject<CompetitionState>,
+  action: Action,
 ) {
-  return useCallback(
-    (action: Action) => {
-      // Apply locally for instant feedback
-      dispatch(action);
-
-      // Send action to server (fire-and-forget, server applies to its own copy)
-      const date = stateRef.current.date;
-      const { ...serverAction } = action;
-      sendAction(date, serverAction);
-    },
-    [dispatch, stateRef],
-  );
+  dispatch(action);
+  const date = stateRef.current.date;
+  sendAction(date, action as unknown as { type: string; [key: string]: unknown });
 }
 
 export function useCompetitionData() {
-  const [state, dispatch] = useReducer(reducer, null, createInitialState);
+  const [state, dispatch] = useReducer(reducer, null, emptyState);
   const [mounted, setMounted] = useState(false);
+  const [myRepId, setMyRepIdState] = useState<string | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const dispatchWithServer = useServerAction(dispatch, stateRef);
+  // Load myRepId from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(MY_REP_KEY);
+    if (saved) setMyRepIdState(saved);
+  }, []);
 
-  // Load from localStorage immediately, then fetch from API
+  // Load state from localStorage, then fetch from API
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
 
-    // Step 1: localStorage for instant render
-    const saved = loadState();
-    if (saved && saved.date === today) {
-      dispatch({ type: 'LOAD', state: saved });
-    }
+    // localStorage for instant render
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as CompetitionState;
+        if (saved.date === today) {
+          dispatch({ type: 'LOAD', state: saved });
+        }
+      }
+    } catch { /* ignore */ }
+
     setMounted(true);
 
-    // Step 2: Fetch from API (async)
+    // Fetch from API
     fetchState(today).then((remote) => {
-      if (remote && remote.date === today) {
+      if (remote) {
         dispatch({ type: 'LOAD', state: remote });
-        saveState(remote);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remote)); } catch { /* */ }
       } else {
-        // No server state yet — initialize it
-        const initial = stateRef.current;
-        sendAction(today, { type: 'INIT', state: initial });
+        // Initialize empty state on server
+        sendAction(today, { type: 'INIT', state: emptyState() });
       }
     });
   }, []);
 
-  // Save to localStorage whenever state changes
+  // Save to localStorage on state changes
   useEffect(() => {
     if (mounted) {
-      saveState(state);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* */ }
     }
   }, [state, mounted]);
 
-  // Poll for remote changes every 3 seconds
+  // Poll every 5 seconds
   useEffect(() => {
     if (!mounted) return;
 
@@ -225,71 +220,79 @@ export function useCompetitionData() {
       const remote = await fetchState(today);
       if (remote && JSON.stringify(remote) !== JSON.stringify(stateRef.current)) {
         dispatch({ type: 'LOAD', state: remote });
-        saveState(remote);
       }
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [mounted]);
 
+  const setMyRepId = useCallback((id: string) => {
+    setMyRepIdState(id);
+    localStorage.setItem(MY_REP_KEY, id);
+  }, []);
+
+  const fire = useCallback(
+    (action: Action) => dispatchAndSync(dispatch, stateRef, action),
+    [],
+  );
+
   const incrementTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period) =>
-      dispatchWithServer({ type: 'INCREMENT_TRACKER', repId, metric, period }),
-    [dispatchWithServer]
+      fire({ type: 'INCREMENT_TRACKER', repId, metric, period }),
+    [fire],
   );
 
   const decrementTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period) =>
-      dispatchWithServer({ type: 'DECREMENT_TRACKER', repId, metric, period }),
-    [dispatchWithServer]
+      fire({ type: 'DECREMENT_TRACKER', repId, metric, period }),
+    [fire],
   );
 
   const setTracker = useCallback(
     (repId: string, metric: TrackerMetric, period: Period, value: number) =>
-      dispatchWithServer({ type: 'SET_TRACKER', repId, metric, period, value }),
-    [dispatchWithServer]
+      fire({ type: 'SET_TRACKER', repId, metric, period, value }),
+    [fire],
   );
 
   const incrementPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period) =>
-      dispatchWithServer({ type: 'INCREMENT_POINTS', repId, metric, period }),
-    [dispatchWithServer]
+      fire({ type: 'INCREMENT_POINTS', repId, metric, period }),
+    [fire],
   );
 
   const decrementPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period) =>
-      dispatchWithServer({ type: 'DECREMENT_POINTS', repId, metric, period }),
-    [dispatchWithServer]
+      fire({ type: 'DECREMENT_POINTS', repId, metric, period }),
+    [fire],
   );
 
   const setPoints = useCallback(
     (repId: string, metric: PointsMetric, period: Period, value: number) =>
-      dispatchWithServer({ type: 'SET_POINTS', repId, metric, period, value }),
-    [dispatchWithServer]
+      fire({ type: 'SET_POINTS', repId, metric, period, value }),
+    [fire],
   );
 
   const addRep = useCallback(
     (name: string) => {
       const id = crypto.randomUUID();
-      dispatchWithServer({ type: 'ADD_REP', name, id });
+      fire({ type: 'ADD_REP', name, id });
+      return id;
     },
-    [dispatchWithServer]
+    [fire],
   );
 
   const toggleParticipant = useCallback(
-    (repId: string) =>
-      dispatchWithServer({ type: 'TOGGLE_POINTS_PARTICIPANT', repId }),
-    [dispatchWithServer]
+    (repId: string) => fire({ type: 'TOGGLE_POINTS_PARTICIPANT', repId }),
+    [fire],
   );
 
-  const resetDay = useCallback(
-    () => dispatchWithServer({ type: 'RESET_DAY' }),
-    [dispatchWithServer]
-  );
+  const resetDay = useCallback(() => fire({ type: 'RESET_DAY' }), [fire]);
 
   return {
     state,
     mounted,
+    myRepId,
+    setMyRepId,
     incrementTracker,
     decrementTracker,
     setTracker,
