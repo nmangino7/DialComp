@@ -27,9 +27,11 @@ export default function JoinModal({ open, onJoin }: JoinModalProps) {
         onSubmit={handleSubmit}
         className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center"
       >
-        <div className="text-5xl mb-4">🏆</div>
-        <h2 className="text-2xl font-bold text-white mb-2">Join the Competition</h2>
-        <p className="text-slate-400 text-sm mb-6">Enter your name to start tracking</p>
+        <div className="text-5xl mb-4">&#9876;&#65039;</div>
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-amber-400 to-red-500 bg-clip-text text-transparent mb-2">
+          Enter the Arena
+        </h2>
+        <p className="text-slate-400 text-sm mb-6">Type your name to join the battle</p>
         <input
           autoFocus
           type="text"
@@ -42,9 +44,9 @@ export default function JoinModal({ open, onJoin }: JoinModalProps) {
         <button
           type="submit"
           disabled={!name.trim()}
-          className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-lg hover:brightness-110 active:brightness-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+          className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 to-red-600 text-white font-bold text-lg hover:brightness-110 active:brightness-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
         >
-          Let&apos;s Go!
+          &#9876;&#65039; Fight!
         </button>
       </form>
     </div>

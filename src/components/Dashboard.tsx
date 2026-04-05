@@ -97,8 +97,8 @@ export default function Dashboard() {
         <div className="max-w-lg mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Dial Competition
+              <h1 className="text-xl font-bold bg-gradient-to-r from-amber-400 to-red-500 bg-clip-text text-transparent flex items-center gap-2">
+                <span className="text-2xl">&#9876;&#65039;</span> Welcome to the Arena
               </h1>
               <p className="text-xs text-slate-500">
                 {new Date().toLocaleDateString('en-US', {
@@ -137,17 +137,17 @@ export default function Dashboard() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Tracker
+              &#9876;&#65039; Tracker
             </button>
             <button
               onClick={() => setActiveTab('points')}
               className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
                 activeTab === 'points'
-                  ? 'bg-blue-600 text-white shadow-lg'
+                  ? 'bg-amber-600 text-white shadow-lg'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Points
+              &#x1F525; Points
             </button>
           </div>
         </div>
