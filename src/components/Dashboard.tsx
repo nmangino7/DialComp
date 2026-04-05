@@ -163,14 +163,17 @@ export default function Dashboard() {
         {/* My Stats */}
         {myRep && activeTab === 'tracker' && myTrackerEntry && (
           <>
-            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider px-1">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-2">
+              <span className="h-px flex-1 bg-slate-700/50" />
               Your Stats
+              <span className="h-px flex-1 bg-slate-700/50" />
             </h3>
             <MyStats
               mode="tracker"
               rep={myRep}
               entry={myTrackerEntry}
               rank={myTrackerRank || state.reps.length}
+              totalReps={state.reps.length}
               onIncrement={incrementTracker}
               onDecrement={decrementTracker}
               onSet={setTracker}
@@ -205,8 +208,10 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider px-1">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-2">
+              <span className="h-px flex-1 bg-slate-700/50" />
               Your Stats
+              <span className="h-px flex-1 bg-slate-700/50" />
             </h3>
             <MyStats
               mode="points"
@@ -214,6 +219,7 @@ export default function Dashboard() {
               entry={myPointsEntry}
               totalPoints={calculatePoints(myPointsEntry)}
               rank={myPointsRank || state.reps.length}
+              totalReps={pointsActive.length}
               onIncrement={incrementPoints}
               onDecrement={decrementPoints}
               onSet={setPoints}

@@ -13,16 +13,42 @@ interface LeaderboardProps {
 }
 
 const PODIUM = [
-  { bg: 'from-amber-500/20 to-amber-600/10 border-amber-500/40', badge: '🥇', text: 'text-amber-300', size: 'text-3xl' },
-  { bg: 'from-slate-400/15 to-slate-500/10 border-slate-400/30', badge: '🥈', text: 'text-slate-300', size: 'text-2xl' },
-  { bg: 'from-orange-600/15 to-orange-700/10 border-orange-600/30', badge: '🥉', text: 'text-orange-300', size: 'text-xl' },
+  {
+    bg: 'from-amber-500/25 to-amber-600/10 border-amber-400/50',
+    badge: '🥇',
+    text: 'text-amber-200',
+    size: 'text-3xl',
+    valueSize: 'text-4xl',
+    glow: 'animate-gold-glow',
+    rank: '1st',
+  },
+  {
+    bg: 'from-slate-400/20 to-slate-500/10 border-slate-300/30',
+    badge: '🥈',
+    text: 'text-slate-200',
+    size: 'text-2xl',
+    valueSize: 'text-3xl',
+    glow: '',
+    rank: '2nd',
+  },
+  {
+    bg: 'from-orange-600/20 to-orange-700/10 border-orange-500/30',
+    badge: '🥉',
+    text: 'text-orange-200',
+    size: 'text-xl',
+    valueSize: 'text-2xl',
+    glow: '',
+    rank: '3rd',
+  },
 ];
 
 export default function Leaderboard({ entries }: LeaderboardProps) {
   if (entries.length === 0) {
     return (
-      <div className="text-center py-8 text-slate-500">
-        No competitors yet. Join the competition below!
+      <div className="text-center py-12 animate-fade-in">
+        <div className="text-5xl mb-3">&#9876;&#65039;</div>
+        <p className="text-slate-400 font-semibold text-lg">The Arena Awaits</p>
+        <p className="text-slate-600 text-sm mt-1">Join below to start competing</p>
       </div>
     );
   }
@@ -30,25 +56,30 @@ export default function Leaderboard({ entries }: LeaderboardProps) {
   const top3 = entries.slice(0, 3);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {top3.map((entry, idx) => {
         const style = PODIUM[idx];
         return (
           <div
             key={entry.rep.id}
-            className={`flex items-center gap-4 px-4 py-3 rounded-xl bg-gradient-to-r ${style.bg} border transition-all animate-fade-in`}
+            className={`flex items-center gap-4 px-5 py-4 rounded-2xl bg-gradient-to-r ${style.bg} border transition-all animate-fade-in ${style.glow}`}
+            style={{ animationDelay: `${idx * 80}ms` }}
           >
-            <span className="text-2xl">{style.badge}</span>
+            <div className="flex flex-col items-center min-w-[44px]">
+              <span className="text-3xl leading-none">{style.badge}</span>
+            </div>
             <div className="flex-1 min-w-0">
-              <p className={`font-bold ${style.text} ${style.size} truncate`}>
+              <p className={`font-extrabold ${style.text} ${style.size} truncate leading-tight`}>
                 {entry.rep.name}
               </p>
             </div>
-            <div className="text-right">
-              <p className={`font-black tabular-nums ${style.size} ${style.text}`}>
+            <div className="text-right flex flex-col items-end">
+              <p className={`font-black tabular-nums ${style.valueSize} ${style.text} leading-none`}>
                 {entry.value}
               </p>
-              <p className="text-xs text-slate-500 uppercase tracking-wider">{entry.label}</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-1 font-semibold">
+                {entry.label}
+              </p>
             </div>
           </div>
         );
