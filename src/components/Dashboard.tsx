@@ -52,10 +52,10 @@ export default function Dashboard() {
     setShowAddRep(false);
   };
 
-  // Sorted entries for tracker tab
+  // Sorted entries for tracker tab — ranked by SETS (most important metric)
   const trackerSorted = [...state.trackerEntries].sort((a, b) => {
-    const ta = a.dials.morning + a.dials.afternoon;
-    const tb = b.dials.morning + b.dials.afternoon;
+    const ta = a.sets.morning + a.sets.afternoon;
+    const tb = b.sets.morning + b.sets.afternoon;
     return tb - ta;
   });
 
@@ -67,11 +67,11 @@ export default function Dashboard() {
     (a, b) => calculatePoints(b) - calculatePoints(a),
   );
 
-  // Leaderboard data
+  // Leaderboard data — tracker ranks by sets
   const trackerLeaderboard = trackerSorted.slice(0, 3).map((entry) => ({
     rep: state.reps.find((r) => r.id === entry.repId)!,
-    value: entry.dials.morning + entry.dials.afternoon,
-    label: 'dials',
+    value: entry.sets.morning + entry.sets.afternoon,
+    label: 'sets',
   })).filter((e) => e.rep);
 
   const pointsLeaderboard = pointsSorted.slice(0, 3).map((entry) => ({

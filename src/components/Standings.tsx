@@ -64,6 +64,7 @@ function TrackerRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [period, setPeriod] = useState<Period>('morning');
+  const totalSets = entry.sets.morning + entry.sets.afternoon;
   const totalDials = entry.dials.morning + entry.dials.afternoon;
   const canEdit = isMe || isAdmin;
 
@@ -80,8 +81,10 @@ function TrackerRow({
         <span className={`font-semibold flex-1 truncate ${isMe ? 'text-blue-300' : 'text-white'}`}>
           {rep.name} {isMe && <span className="text-xs text-blue-400">(you)</span>}
         </span>
-        <span className="font-bold text-white tabular-nums text-lg">{totalDials}</span>
-        <span className="text-xs text-slate-500">dials</span>
+        <span className="font-bold text-purple-400 tabular-nums text-lg">{totalSets}</span>
+        <span className="text-xs text-slate-500">sets</span>
+        <span className="font-medium text-slate-400 tabular-nums text-sm">{totalDials}</span>
+        <span className="text-xs text-slate-600">dials</span>
         {canEdit && (
           <span className="text-slate-600 text-sm">{expanded ? '▼' : '▶'}</span>
         )}
@@ -210,8 +213,8 @@ function PointsRow({
 export default function Standings(props: StandingsProps) {
   if (props.mode === 'tracker') {
     const sorted = [...props.entries].sort((a, b) => {
-      const ta = a.dials.morning + a.dials.afternoon;
-      const tb = b.dials.morning + b.dials.afternoon;
+      const ta = a.sets.morning + a.sets.afternoon;
+      const tb = b.sets.morning + b.sets.afternoon;
       return tb - ta;
     });
 
