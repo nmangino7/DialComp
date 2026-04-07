@@ -172,6 +172,7 @@ export default function Dashboard() {
             reps={state.reps}
             entries={state.pointsEntries}
             participantIds={state.pointsParticipantIds}
+            myRepId={myRepId}
           />
         )}
 
