@@ -29,16 +29,16 @@ const CHARACTERS = [
 
 const DEFAULT_CHAR = '⚔️';
 
-// Weapon tiers — each adds damage
+// Weapon tiers — damage + speed
 const WEAPON_TIERS = [
-  { pts: 0,   icon: '👊', name: 'Fists',    dmg: 2 },
-  { pts: 5,   icon: '🗡️', name: 'Dagger',   dmg: 4 },
-  { pts: 10,  icon: '⚔️', name: 'Sword',    dmg: 6 },
-  { pts: 20,  icon: '🪓', name: 'Axe',      dmg: 9 },
-  { pts: 35,  icon: '🏹', name: 'Bow',      dmg: 12 },
-  { pts: 50,  icon: '🔱', name: 'Trident',  dmg: 16 },
-  { pts: 75,  icon: '🛡️', name: 'Shield',   dmg: 20 },
-  { pts: 100, icon: '👑', name: 'Crown',    dmg: 30 },
+  { pts: 0,   icon: '👊', name: 'Fists',    dmg: 2,  speed: 6,  tier: 0 },
+  { pts: 5,   icon: '🗡️', name: 'Dagger',   dmg: 4,  speed: 8,  tier: 1 },
+  { pts: 10,  icon: '⚔️', name: 'Sword',    dmg: 6,  speed: 9,  tier: 2 },
+  { pts: 20,  icon: '🪓', name: 'Axe',      dmg: 9,  speed: 10, tier: 3 },
+  { pts: 35,  icon: '🏹', name: 'Bow',      dmg: 12, speed: 12, tier: 4 },
+  { pts: 50,  icon: '🔱', name: 'Trident',  dmg: 16, speed: 14, tier: 5 },
+  { pts: 75,  icon: '🛡️', name: 'Shield',   dmg: 20, speed: 16, tier: 6 },
+  { pts: 100, icon: '👑', name: 'Crown',    dmg: 30, speed: 19, tier: 7 },
 ];
 
 function getWeapon(points: number) {
@@ -74,6 +74,7 @@ interface FighterState {
   hitTimer: number;
   deathTimer: number;
   respawnTimer: number;
+  retreatTimer: number;
   kills: number;
   deaths: number;
   lastKiller: string | null;
@@ -86,12 +87,30 @@ interface DamagePopup {
   dmg: number;
   timer: number;
   crit: boolean;
+  isMiss?: boolean;
+  isKill?: boolean;
 }
 
 interface ClashEffect {
   id: number;
   x: number;
   y: number;
+  timer: number;
+}
+
+interface BloodParticle {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  timer: number;
+  size: number;
+}
+
+interface WastedEvent {
+  victimName: string;
+  killerName: string;
   timer: number;
 }
 
@@ -112,11 +131,13 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
   const positionsRef = useRef<Map<string, FighterState>>(new Map());
   const popupsRef = useRef<DamagePopup[]>([]);
   const clashesRef = useRef<ClashEffect[]>([]);
+  const bloodRef = useRef<BloodParticle[]>([]);
   const popupIdRef = useRef(0);
   const [, forceUpdate] = useState(0);
   const animRef = useRef<number>(0);
   const [charMap, setCharMap] = useState<Record<string, string>>({});
   const [showPicker, setShowPicker] = useState(false);
+  const [wasted, setWasted] = useState<WastedEvent | null>(null);
 
   // Load character selections
   useEffect(() => {
@@ -183,6 +204,7 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           hitTimer: 0,
           deathTimer: 0,
           respawnTimer: 0,
+          retreatTimer: 0,
           kills: 0,
           deaths: 0,
           lastKiller: null,
@@ -196,6 +218,51 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
     });
   }, [fighters.length, maxPoints]);
 
+  // Wasted timer
+  useEffect(() => {
+    if (!wasted) return;
+    const interval = setInterval(() => {
+      setWasted((w) => {
+        if (!w) return null;
+        const next = w.timer - 0.05;
+        return next <= 0 ? null : { ...w, timer: next };
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, [wasted?.victimName]);
+
+  // Helper: find nearest alive enemy
+  const findNearest = (id: string, map: Map<string, FighterState>): string | null => {
+    let bestId: string | null = null;
+    let bestDist = Infinity;
+    const myPos = map.get(id);
+    if (!myPos) return null;
+    fighters.forEach((o) => {
+      if (o.id === id) return;
+      const op = map.get(o.id);
+      if (!op || op.hp <= 0) return;
+      const dx = op.x - myPos.x;
+      const dy = op.y - myPos.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestDist) { bestDist = d; bestId = o.id; }
+    });
+    return bestId;
+  };
+
+  // Spawn blood
+  const spawnBlood = (x: number, y: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      bloodRef.current.push({
+        id: popupIdRef.current++,
+        x, y,
+        vx: (Math.random() - 0.5) * 40,
+        vy: (Math.random() - 0.5) * 30 - 10,
+        timer: 1.2 + Math.random() * 0.6,
+        size: 1 + Math.random() * 2,
+      });
+    }
+  };
+
   // Main game loop
   useEffect(() => {
     const map = positionsRef.current;
@@ -205,61 +272,96 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
       const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
 
-      // Update damage popups
+      // Update popups
       popupsRef.current = popupsRef.current
-        .map((p) => ({ ...p, timer: p.timer - dt, y: p.y - 30 * dt }))
+        .map((p) => ({ ...p, timer: p.timer - dt, y: p.y - 25 * dt }))
         .filter((p) => p.timer > 0);
 
-      // Update clash effects
+      // Update clashes
       clashesRef.current = clashesRef.current
         .map((c) => ({ ...c, timer: c.timer - dt }))
         .filter((c) => c.timer > 0);
+
+      // Update blood particles
+      bloodRef.current = bloodRef.current
+        .map((b) => ({
+          ...b,
+          timer: b.timer - dt,
+          x: b.x + b.vx * dt,
+          y: b.y + b.vy * dt,
+          vy: b.vy + 20 * dt, // gravity
+        }))
+        .filter((b) => b.timer > 0);
 
       fighters.forEach((f) => {
         const pos = map.get(f.id);
         if (!pos) return;
 
-        // Dead — respawn after 4s
+        // Dead — respawn at edge after 4s
         if (pos.hp <= 0) {
           pos.deathTimer += dt;
           if (pos.deathTimer > 4) {
             pos.hp = f.maxHp;
             pos.deathTimer = 0;
-            pos.x = 8 + Math.random() * 84;
-            pos.y = 12 + Math.random() * 76;
             pos.attackTarget = null;
-            pos.respawnTimer = 0.5;
+            pos.respawnTimer = 0.6;
+            pos.retreatTimer = 0;
+            // Respawn at a random edge
+            const edge = Math.floor(Math.random() * 4);
+            if (edge === 0) { pos.x = 5; pos.y = 15 + Math.random() * 70; }
+            else if (edge === 1) { pos.x = 95; pos.y = 15 + Math.random() * 70; }
+            else if (edge === 2) { pos.x = 10 + Math.random() * 80; pos.y = 8; }
+            else { pos.x = 10 + Math.random() * 80; pos.y = 90; }
           }
           return;
         }
 
-        if (pos.respawnTimer > 0) {
-          pos.respawnTimer -= dt;
-          return;
-        }
-
+        if (pos.respawnTimer > 0) { pos.respawnTimer -= dt; return; }
         if (pos.hitTimer > 0) pos.hitTimer -= dt;
         pos.attackCooldown -= dt;
 
-        // Always find someone to fight
-        if (!pos.attackTarget || Math.random() < 0.01) {
-          const aliveOthers = fighters.filter((o) => {
-            const op = map.get(o.id);
-            return o.id !== f.id && op && op.hp > 0;
-          });
-          if (aliveOthers.length > 0) {
-            // Prefer attacking nearby enemies or weaker ones
-            const target = aliveOthers[Math.floor(Math.random() * aliveOthers.length)];
-            pos.attackTarget = target.id;
-            const tp = map.get(target.id);
-            if (tp) {
-              pos.targetX = tp.x;
-              pos.targetY = tp.y;
-            }
+        // SEPARATION FORCE — push away from nearby fighters
+        fighters.forEach((o) => {
+          if (o.id === f.id) return;
+          const op = map.get(o.id);
+          if (!op || op.hp <= 0) return;
+          const sx = pos.x - op.x;
+          const sy = pos.y - op.y;
+          const sDist = Math.sqrt(sx * sx + sy * sy);
+          if (sDist < 12 && sDist > 0.1) {
+            const push = (12 - sDist) * 0.3 * dt * 10;
+            pos.x += (sx / sDist) * push;
+            pos.y += (sy / sDist) * push;
           }
+        });
+
+        // RETREAT after attacking
+        if (pos.retreatTimer > 0) {
+          pos.retreatTimer -= dt;
+          const dx = pos.targetX - pos.x;
+          const dy = pos.targetY - pos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 2) {
+            pos.x += (dx / dist) * f.weapon.speed * 0.8 * dt;
+            pos.y += (dy / dist) * f.weapon.speed * 0.8 * dt;
+            pos.facing = dx > 0 ? 'right' : 'left';
+          }
+          pos.x = Math.max(3, Math.min(97, pos.x));
+          pos.y = Math.max(5, Math.min(92, pos.y));
+          return; // don't chase while retreating
         }
 
-        // Move toward target — chase aggressively
+        // TARGET SELECTION — find nearest, switch often
+        const targetDead = pos.attackTarget && (() => {
+          const tp = map.get(pos.attackTarget!);
+          return !tp || tp.hp <= 0;
+        })();
+        if (!pos.attackTarget || targetDead || Math.random() < 0.03 * dt * 60) {
+          const nearestId = findNearest(f.id, map);
+          if (nearestId) pos.attackTarget = nearestId;
+        }
+
+        // CHASE target
         if (pos.attackTarget) {
           const tp = map.get(pos.attackTarget);
           if (tp && tp.hp > 0) {
@@ -267,21 +369,22 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
             pos.targetY = tp.y;
           } else {
             pos.attackTarget = null;
+            pos.targetX = 10 + Math.random() * 80;
+            pos.targetY = 15 + Math.random() * 70;
           }
         }
 
         const dx = pos.targetX - pos.x;
         const dy = pos.targetY - pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const speed = 12 + f.rank * 0.3;
 
-        if (dist > 3) {
-          pos.x += (dx / dist) * speed * dt;
-          pos.y += (dy / dist) * speed * dt;
+        if (dist > 2) {
+          pos.x += (dx / dist) * f.weapon.speed * dt;
+          pos.y += (dy / dist) * f.weapon.speed * dt;
           pos.facing = dx > 0 ? 'right' : 'left';
         }
 
-        // ATTACK when close enough and cooldown ready
+        // ATTACK
         if (pos.attackTarget && pos.attackCooldown <= 0) {
           const tp = map.get(pos.attackTarget);
           if (tp && tp.hp > 0) {
@@ -289,54 +392,82 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
             const ady = tp.y - pos.y;
             const aDist = Math.sqrt(adx * adx + ady * ady);
 
-            if (aDist < 8) {
-              // HIT!
-              const isCrit = Math.random() < 0.15;
-              const damage = isCrit ? f.dmg * 2 : f.dmg;
-              tp.hp = Math.max(0, tp.hp - damage);
-              tp.hitTimer = 0.25;
-              pos.attackCooldown = 0.8 + Math.random() * 0.4;
+            if (aDist < 9) {
+              // Miss chance: 20% base, -3% per tier advantage
+              const targetFighter = fighters.find((o) => o.id === pos.attackTarget);
+              const tierDiff = f.weapon.tier - (targetFighter?.weapon.tier || 0);
+              const missChance = Math.max(0.02, 0.20 - tierDiff * 0.03);
 
-              // Damage popup
-              popupsRef.current.push({
-                id: popupIdRef.current++,
-                x: tp.x,
-                y: tp.y - 5,
-                dmg: damage,
-                timer: 1.0,
-                crit: isCrit,
-              });
-
-              // Clash effect
-              clashesRef.current.push({
-                id: popupIdRef.current++,
-                x: (pos.x + tp.x) / 2,
-                y: (pos.y + tp.y) / 2,
-                timer: 0.3,
-              });
-
-              // Knock back slightly
-              const knockX = adx / (aDist || 1) * 3;
-              const knockY = ady / (aDist || 1) * 3;
-              tp.x = Math.max(3, Math.min(97, tp.x + knockX));
-              tp.y = Math.max(5, Math.min(92, tp.y + knockY));
-
-              // KILL — credit the attacker
-              if (tp.hp <= 0) {
-                pos.kills += 1;
-                tp.deaths += 1;
-                tp.lastKiller = f.id;
-                pos.attackTarget = null;
-
-                // Kill popup
+              if (Math.random() < missChance) {
+                // MISS!
                 popupsRef.current.push({
                   id: popupIdRef.current++,
-                  x: pos.x,
-                  y: pos.y - 8,
-                  dmg: 0,
-                  timer: 1.5,
-                  crit: true,
+                  x: tp.x + (Math.random() - 0.5) * 4,
+                  y: tp.y - 4,
+                  dmg: 0, timer: 0.7, crit: false, isMiss: true,
                 });
+                pos.attackCooldown = 0.5;
+              } else {
+                // HIT!
+                const isCrit = Math.random() < 0.12;
+                const damage = isCrit ? f.dmg * 2 : f.dmg;
+                tp.hp = Math.max(0, tp.hp - damage);
+                tp.hitTimer = 0.3;
+                pos.attackCooldown = 0.7 + Math.random() * 0.5;
+
+                // Blood!
+                spawnBlood(tp.x, tp.y, isCrit ? 6 : 3);
+
+                // Damage popup
+                popupsRef.current.push({
+                  id: popupIdRef.current++,
+                  x: tp.x + (Math.random() - 0.5) * 3,
+                  y: tp.y - 5,
+                  dmg: damage, timer: 1.0, crit: isCrit,
+                });
+
+                // Clash effect
+                clashesRef.current.push({
+                  id: popupIdRef.current++,
+                  x: (pos.x + tp.x) / 2,
+                  y: (pos.y + tp.y) / 2,
+                  timer: 0.3,
+                });
+
+                // Knockback (big)
+                const kn = 8;
+                tp.x = Math.max(3, Math.min(97, tp.x + (adx / (aDist || 1)) * kn));
+                tp.y = Math.max(5, Math.min(92, tp.y + (ady / (aDist || 1)) * kn));
+
+                // RETREAT after hitting — back off opposite direction
+                const retreatDist = 15 + Math.random() * 10;
+                pos.targetX = Math.max(5, Math.min(95, pos.x - (adx / (aDist || 1)) * retreatDist));
+                pos.targetY = Math.max(8, Math.min(90, pos.y - (ady / (aDist || 1)) * retreatDist));
+                pos.retreatTimer = 0.8 + Math.random() * 0.4;
+
+                // KILL
+                if (tp.hp <= 0) {
+                  pos.kills += 1;
+                  tp.deaths += 1;
+                  tp.lastKiller = f.id;
+                  pos.attackTarget = null;
+                  spawnBlood(tp.x, tp.y, 10); // extra blood on kill
+
+                  // WASTED overlay
+                  const victimName = fighters.find((o) => o.id === tp.lastKiller ? false : o.id === pos.attackTarget || (tp === map.get(o.id)))?.name;
+                  const killedFighter = fighters.find((o) => { const op = map.get(o.id); return op === tp; });
+                  setWasted({
+                    killerName: f.name,
+                    victimName: killedFighter?.name || '???',
+                    timer: 2.5,
+                  });
+
+                  popupsRef.current.push({
+                    id: popupIdRef.current++,
+                    x: tp.x, y: tp.y - 8,
+                    dmg: 0, timer: 2.0, crit: false, isKill: true,
+                  });
+                }
               }
             }
           }
@@ -411,7 +542,7 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
       <div
         className="relative w-full rounded-2xl border-2 border-amber-900/40 overflow-hidden select-none"
         style={{
-          height: Math.max(420, fighters.length * 20 + 250),
+          height: Math.max(500, fighters.length * 18 + 300),
           background: 'radial-gradient(ellipse at center, #1a1207 0%, #0c0a04 50%, #0f172a 100%)',
         }}
       >
@@ -453,11 +584,55 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
               opacity: p.timer,
             }}
           >
-            <span className={`font-black text-sm tabular-nums ${p.crit ? 'text-amber-300 text-base' : 'text-red-400'}`}>
-              {p.dmg === 0 ? '☠️ KILL!' : `${p.crit ? '💥' : ''}-${p.dmg}`}
+            <span className={`font-black text-sm tabular-nums ${
+              p.isKill ? 'text-red-500 text-lg' :
+              p.isMiss ? 'text-slate-500 text-xs italic' :
+              p.crit ? 'text-amber-300 text-base' : 'text-red-400'
+            }`}>
+              {p.isKill ? '☠️ KILL!' : p.isMiss ? 'MISS' : `${p.crit ? '💥' : ''}-${p.dmg}`}
             </span>
           </div>
         ))}
+
+        {/* Blood particles */}
+        {bloodRef.current.map((b) => (
+          <div
+            key={b.id}
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              width: b.size,
+              height: b.size,
+              backgroundColor: `rgba(${180 + Math.random() * 40}, 20, 20, ${b.timer / 1.5})`,
+              transform: 'translate(-50%, -50%)',
+            }}
+          />
+        ))}
+
+        {/* WASTED overlay */}
+        {wasted && (
+          <div
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center"
+            style={{ backgroundColor: `rgba(0, 0, 0, ${Math.min(0.6, wasted.timer * 0.3)})` }}
+          >
+            <p
+              className="text-red-600 font-black tracking-[0.3em] uppercase"
+              style={{
+                fontSize: 'clamp(2rem, 10vw, 4rem)',
+                transform: 'rotate(-3deg)',
+                textShadow: '0 0 30px rgba(200,0,0,0.5), 0 0 60px rgba(200,0,0,0.3)',
+                opacity: Math.min(1, wasted.timer * 2),
+                fontFamily: 'Impact, Arial Black, sans-serif',
+              }}
+            >
+              WASTED
+            </p>
+            <p className="text-red-400/80 text-sm font-bold mt-2" style={{ opacity: Math.min(1, wasted.timer * 2) }}>
+              {wasted.killerName} killed {wasted.victimName}
+            </p>
+          </div>
+        )}
 
         {/* Fighters */}
         {fighters.map((f) => {
