@@ -8,6 +8,7 @@ import JoinModal from './JoinModal';
 import Leaderboard from './Leaderboard';
 import MyStats from './MyStats';
 import Standings from './Standings';
+import BattleArena from './BattleArena';
 
 export default function Dashboard() {
   const {
@@ -128,10 +129,10 @@ export default function Dashboard() {
           </div>
 
           {/* Tabs */}
-          <div className="flex bg-slate-900 rounded-lg p-1 mt-3">
+          <div className="flex bg-slate-900 rounded-lg p-1 mt-3 gap-0.5">
             <button
               onClick={() => setActiveTab('tracker')}
-              className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
+              className={`flex-1 py-2 rounded-md text-xs font-bold transition-all btn-press ${
                 activeTab === 'tracker'
                   ? 'bg-blue-600 text-white shadow-lg'
                   : 'text-slate-400 hover:text-white'
@@ -141,7 +142,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => setActiveTab('points')}
-              className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
+              className={`flex-1 py-2 rounded-md text-xs font-bold transition-all btn-press ${
                 activeTab === 'points'
                   ? 'bg-amber-600 text-white shadow-lg'
                   : 'text-slate-400 hover:text-white'
@@ -149,16 +150,37 @@ export default function Dashboard() {
             >
               &#x1F525; Points
             </button>
+            <button
+              onClick={() => setActiveTab('battle')}
+              className={`flex-1 py-2 rounded-md text-xs font-bold transition-all btn-press ${
+                activeTab === 'battle'
+                  ? 'bg-red-600 text-white shadow-lg'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              &#x1F3DF;&#65039; Battle
+            </button>
           </div>
         </div>
       </header>
 
       {/* Content */}
       <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-24">
-        {/* Leaderboard */}
-        <Leaderboard
-          entries={activeTab === 'tracker' ? trackerLeaderboard : pointsLeaderboard}
-        />
+        {/* Battle Arena Tab */}
+        {activeTab === 'battle' && (
+          <BattleArena
+            reps={state.reps}
+            entries={state.pointsEntries}
+            participantIds={state.pointsParticipantIds}
+          />
+        )}
+
+        {/* Leaderboard (tracker & points tabs only) */}
+        {activeTab !== 'battle' && (
+          <Leaderboard
+            entries={activeTab === 'tracker' ? trackerLeaderboard : pointsLeaderboard}
+          />
+        )}
 
         {/* My Stats */}
         {myRep && activeTab === 'tracker' && myTrackerEntry && (
@@ -228,7 +250,7 @@ export default function Dashboard() {
         )}
 
         {/* Full Standings */}
-        {activeTab === 'tracker' ? (
+        {activeTab === 'tracker' && (
           <Standings
             mode="tracker"
             reps={state.reps}
@@ -239,7 +261,8 @@ export default function Dashboard() {
             onDecrement={decrementTracker}
             onSet={setTracker}
           />
-        ) : (
+        )}
+        {activeTab === 'points' && (
           <Standings
             mode="points"
             reps={state.reps}

@@ -34,4 +34,4 @@ export interface CompetitionState {
 export type TrackerMetric = 'dials' | 'pickUps' | 'sets';
 export type PointsMetric = 'dials' | 'dnc' | 'notInterested' | 'sets';
 export type Period = 'morning' | 'afternoon';
-export type TabType = 'tracker' | 'points';
+export type TabType = 'tracker' | 'points' | 'battle';
