@@ -31,15 +31,23 @@ const DEFAULT_CHAR = '⚔️';
 
 // Weapon tiers — damage + speed
 const WEAPON_TIERS = [
-  { pts: 0,   icon: '👊', name: 'Fists',    dmg: 2,  speed: 6,  tier: 0 },
-  { pts: 5,   icon: '🗡️', name: 'Dagger',   dmg: 4,  speed: 8,  tier: 1 },
-  { pts: 10,  icon: '⚔️', name: 'Sword',    dmg: 6,  speed: 9,  tier: 2 },
-  { pts: 20,  icon: '🪓', name: 'Axe',      dmg: 9,  speed: 10, tier: 3 },
-  { pts: 35,  icon: '🏹', name: 'Bow',      dmg: 12, speed: 12, tier: 4 },
-  { pts: 50,  icon: '🔱', name: 'Trident',  dmg: 16, speed: 14, tier: 5 },
-  { pts: 75,  icon: '🛡️', name: 'Shield',   dmg: 20, speed: 16, tier: 6 },
-  { pts: 100, icon: '👑', name: 'Crown',    dmg: 30, speed: 19, tier: 7 },
+  { pts: 0,   icon: '👊', name: 'Fists',    dmg: 2,  speed: 6 },
+  { pts: 5,   icon: '🗡️', name: 'Dagger',   dmg: 4,  speed: 8 },
+  { pts: 10,  icon: '⚔️', name: 'Sword',    dmg: 6,  speed: 9 },
+  { pts: 20,  icon: '🪓', name: 'Axe',      dmg: 9,  speed: 10 },
+  { pts: 35,  icon: '🏹', name: 'Bow',      dmg: 12, speed: 12 },
+  { pts: 50,  icon: '🔱', name: 'Trident',  dmg: 16, speed: 14 },
+  { pts: 75,  icon: '🛡️', name: 'Shield',   dmg: 20, speed: 16 },
+  { pts: 100, icon: '👑', name: 'Crown',    dmg: 30, speed: 19 },
 ];
+
+function getWeaponTierIndex(points: number): number {
+  let idx = 0;
+  for (let i = 0; i < WEAPON_TIERS.length; i++) {
+    if (points >= WEAPON_TIERS[i].pts) idx = i;
+  }
+  return idx;
+}
 
 function getWeapon(points: number) {
   let best = WEAPON_TIERS[0];
@@ -395,7 +403,9 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
             if (aDist < 9) {
               // Miss chance: 20% base, -3% per tier advantage
               const targetFighter = fighters.find((o) => o.id === pos.attackTarget);
-              const tierDiff = f.weapon.tier - (targetFighter?.weapon.tier || 0);
+              const myTier = getWeaponTierIndex(Math.max(0, f.points));
+              const theirTier = targetFighter ? getWeaponTierIndex(Math.max(0, targetFighter.points)) : 0;
+              const tierDiff = myTier - theirTier;
               const missChance = Math.max(0.02, 0.20 - tierDiff * 0.03);
 
               if (Math.random() < missChance) {
