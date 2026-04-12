@@ -86,6 +86,8 @@ interface FighterState {
   deaths: number;
   lastKiller: string | null;
   retreatTimer: number;
+  wanderAngle: number;
+  wanderTimer: number;
   state: 'chasing' | 'attacking' | 'retreating' | 'wandering' | 'dead';
 }
 
@@ -157,6 +159,7 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
   const animRef = useRef<number>(0);
   const [charMap, setCharMap] = useState<Record<string, string>>({});
   const [showPicker, setShowPicker] = useState(false);
+  const [fpsMode, setFpsMode] = useState(false);
   const wastedRef = useRef<WastedEvent | null>(null);
 
   // Load character selections
@@ -232,6 +235,8 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           deaths: 0,
           lastKiller: null,
           retreatTimer: 0,
+          wanderAngle: Math.random() * Math.PI * 2,
+          wanderTimer: 1 + Math.random() * 2,
           state: 'wandering',
         });
       } else {
@@ -310,7 +315,7 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
         if (pos.hitTimer > 0) pos.hitTimer -= dt;
         pos.attackCooldown -= dt;
 
-        // SEPARATION FORCE: push away from nearby fighters
+        // SEPARATION FORCE (reduced radius: 7)
         fighters.forEach((other) => {
           if (other.id === f.id) return;
           const otherPos = map.get(other.id);
@@ -318,33 +323,60 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           const sdx = pos.x - otherPos.x;
           const sdy = pos.y - otherPos.y;
           const sDist = Math.sqrt(sdx * sdx + sdy * sdy);
-          if (sDist < 12 && sDist > 0.01) {
-            const pushStrength = (12 - sDist) * 0.5;
+          if (sDist < 7 && sDist > 0.01) {
+            const pushStrength = (7 - sDist) * 0.4;
             pos.x += (sdx / sDist) * pushStrength * dt;
             pos.y += (sdy / sDist) * pushStrength * dt;
           } else if (sDist <= 0.01) {
-            pos.x += (Math.random() - 0.5) * 2;
-            pos.y += (Math.random() - 0.5) * 2;
+            pos.x += (Math.random() - 0.5) * 3;
+            pos.y += (Math.random() - 0.5) * 3;
           }
         });
 
-        // Handle retreating state
+        // CENTER GRAVITY: pull fighters toward center when in outer zone
+        const centerDx = 50 - pos.x;
+        const centerDy = 50 - pos.y;
+        const centerDist = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+        if (centerDist > 28) {
+          const gravityStrength = (centerDist - 28) * 0.18;
+          pos.x += (centerDx / centerDist) * gravityStrength * dt;
+          pos.y += (centerDy / centerDist) * gravityStrength * dt;
+        }
+
+        // Handle retreating state (shorter retreat)
         if (pos.state === 'retreating') {
           pos.retreatTimer -= dt;
           const rdx = pos.targetX - pos.x;
           const rdy = pos.targetY - pos.y;
           const rDist = Math.sqrt(rdx * rdx + rdy * rdy);
           if (rDist > 1) {
-            pos.x += (rdx / rDist) * f.speed * dt;
-            pos.y += (rdy / rDist) * f.speed * dt;
+            pos.x += (rdx / rDist) * f.speed * 0.7 * dt;
+            pos.y += (rdy / rDist) * f.speed * 0.7 * dt;
             pos.facing = rdx > 0 ? 'right' : 'left';
           }
           if (pos.retreatTimer <= 0) {
-            pos.state = 'chasing';
             pos.retreatTimer = 0;
+            // Immediately find new target
+            let retargetId: string | null = null;
+            let retargetDist = Infinity;
+            fighters.forEach((o) => {
+              if (o.id === f.id) return;
+              const op = map.get(o.id);
+              if (!op || op.hp <= 0) return;
+              const ndx = op.x - pos.x;
+              const ndy = op.y - pos.y;
+              const nDist = Math.sqrt(ndx * ndx + ndy * ndy);
+              if (nDist < retargetDist) { retargetDist = nDist; retargetId = o.id; }
+            });
+            if (retargetId) {
+              pos.attackTarget = retargetId;
+              pos.state = 'chasing';
+            } else {
+              pos.state = 'wandering';
+            }
           }
-          pos.x = Math.max(3, Math.min(97, pos.x));
-          pos.y = Math.max(5, Math.min(95, pos.y));
+          pos.x = Math.max(5, Math.min(95, pos.x));
+          pos.y = Math.max(8, Math.min(92, pos.y));
           return;
         }
 
@@ -384,14 +416,31 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           }
         }
 
+        // WANDER when no target — circular roaming
+        if (!pos.attackTarget || pos.state === 'wandering') {
+          pos.wanderTimer -= dt;
+          if (pos.wanderTimer <= 0) {
+            pos.wanderAngle += (Math.random() - 0.5) * Math.PI;
+            pos.wanderTimer = 1.5 + Math.random() * 2;
+          }
+          const wanderSpeed = f.speed * 0.35;
+          pos.x += Math.cos(pos.wanderAngle) * wanderSpeed * dt;
+          pos.y += Math.sin(pos.wanderAngle) * wanderSpeed * dt;
+          pos.facing = Math.cos(pos.wanderAngle) > 0 ? 'right' : 'left';
+          if (pos.x < 10 || pos.x > 90) pos.wanderAngle = Math.PI - pos.wanderAngle;
+          if (pos.y < 12 || pos.y > 88) pos.wanderAngle = -pos.wanderAngle;
+          pos.state = 'wandering';
+        }
+
         const dx = pos.targetX - pos.x;
         const dy = pos.targetY - pos.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > 3) {
+        if (pos.attackTarget && dist > 3) {
           pos.x += (dx / dist) * f.speed * dt;
           pos.y += (dy / dist) * f.speed * dt;
           pos.facing = dx > 0 ? 'right' : 'left';
+          pos.state = 'chasing';
         }
 
         // ATTACK when close enough and cooldown ready
@@ -472,10 +521,10 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
                 tp.y = Math.max(5, Math.min(95, tp.y + knockY));
 
                 // RETREAT after hit: move 15-25 units away from victim
-                const retreatDist = 15 + Math.random() * 10;
-                pos.targetX = Math.max(3, Math.min(97, pos.x - (adx / knockNorm) * retreatDist));
-                pos.targetY = Math.max(5, Math.min(95, pos.y - (ady / knockNorm) * retreatDist));
-                pos.retreatTimer = 1.0;
+                const retreatDist = 6 + Math.random() * 8;
+                pos.targetX = Math.max(8, Math.min(92, pos.x - (adx / knockNorm) * retreatDist));
+                pos.targetY = Math.max(10, Math.min(90, pos.y - (ady / knockNorm) * retreatDist));
+                pos.retreatTimer = 0.4 + Math.random() * 0.3;
                 pos.state = 'retreating';
 
                 // KILL
@@ -596,20 +645,202 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
         </div>
       )}
 
-      {/* Arena */}
+      {/* View toggle */}
+      {myRepId && (
+        <button
+          onClick={() => setFpsMode(!fpsMode)}
+          className={`w-full py-2 rounded-xl text-xs font-bold transition-all btn-press mb-2 ${
+            fpsMode
+              ? 'bg-red-600/80 text-white border border-red-500/30'
+              : 'bg-stone-800/80 text-stone-400 border border-amber-900/20 hover:bg-stone-700'
+          }`}
+        >
+          {fpsMode ? '\u{1F5FA}\uFE0F Map View' : '\u{1F3AF} FPS View'}
+        </button>
+      )}
+
+      {/* FPS VIEW */}
+      {fpsMode && myRepId && (() => {
+        const myPos = positionsRef.current.get(myRepId);
+        const myFighter = fighters.find((f) => f.id === myRepId);
+        if (!myPos || !myFighter) return null;
+        const facingAngle = myPos.facing === 'right' ? 0 : Math.PI;
+        const FOV = Math.PI * 2 / 3;
+        const isHit = myPos.hitTimer > 0;
+
+        return (
+          <div
+            className="relative w-full rounded-2xl overflow-hidden select-none"
+            style={{
+              height: 400,
+              border: '6px solid #5C4033',
+              boxShadow: 'inset 0 0 60px rgba(0,0,0,0.7)',
+            }}
+          >
+            {/* Sky / arena walls */}
+            <div className="absolute inset-x-0 top-0 h-1/2" style={{
+              background: 'linear-gradient(to bottom, #1a1a2e, #3d2b1f, #5C4033)',
+            }} />
+            {/* Ground / sand */}
+            <div className="absolute inset-x-0 bottom-0 h-1/2" style={{
+              background: 'linear-gradient(to bottom, #8B7355, #C2B280, #D4C5A0)',
+            }} />
+            {/* Horizon */}
+            <div className="absolute inset-x-0 top-1/2 h-px bg-amber-800/50" />
+
+            {/* Hit flash */}
+            {isHit && (
+              <div className="absolute inset-0 bg-red-600/30 z-30 pointer-events-none" />
+            )}
+
+            {/* Enemies in view */}
+            {fighters.filter((f) => f.id !== myRepId).map((f) => {
+              const ep = positionsRef.current.get(f.id);
+              if (!ep) return null;
+              const edx = ep.x - myPos.x;
+              const edy = ep.y - myPos.y;
+              const distance = Math.max(3, Math.sqrt(edx * edx + edy * edy));
+              const angleToEnemy = Math.atan2(edy, edx);
+              let relAngle = angleToEnemy - facingAngle;
+              while (relAngle > Math.PI) relAngle -= 2 * Math.PI;
+              while (relAngle < -Math.PI) relAngle += 2 * Math.PI;
+              const isVisible = Math.abs(relAngle) < FOV / 2;
+              const cid = charMap[f.id];
+              const charObj = CHARACTERS.find((c) => c.id === cid);
+              const emoji = charObj ? charObj.emoji : DEFAULT_CHAR;
+              const isDead = ep.hp <= 0;
+
+              if (!isVisible) {
+                // Direction indicator
+                return (
+                  <div
+                    key={f.id}
+                    className="absolute text-amber-500/60 text-xs font-bold z-20"
+                    style={{
+                      left: relAngle > 0 ? '93%' : '3%',
+                      top: '48%',
+                    }}
+                  >
+                    {relAngle > 0 ? '\u25B6' : '\u25C0'} {f.name}
+                  </div>
+                );
+              }
+
+              const screenX = 50 + (relAngle / (FOV / 2)) * 45;
+              const scale = Math.min(4, 20 / distance);
+              const screenY = 48 + (1 / Math.max(scale, 0.5)) * 3;
+
+              return (
+                <div
+                  key={f.id}
+                  className="absolute z-10 flex flex-col items-center"
+                  style={{
+                    left: `${screenX}%`,
+                    top: `${screenY}%`,
+                    transform: `translate(-50%, -50%) scale(${scale})`,
+                    opacity: isDead ? 0.3 : 1,
+                    filter: isDead ? 'grayscale(1)' : ep.hitTimer > 0 ? 'brightness(2)' : undefined,
+                  }}
+                >
+                  <span className="text-[8px] font-bold text-white bg-black/50 px-1 rounded">{f.name}</span>
+                  <span className="text-lg">{isDead ? '\u{1F480}' : emoji}</span>
+                  <span className="text-[7px] font-bold text-red-400">{Math.round(ep.hp)}hp</span>
+                </div>
+              );
+            })}
+
+            {/* Your weapon (foreground) */}
+            <div className="absolute bottom-4 right-8 text-6xl z-20 drop-shadow-lg" style={{
+              transform: 'rotate(-20deg)',
+            }}>
+              {myFighter.weapon.icon}
+            </div>
+
+            {/* HUD */}
+            <div className="absolute top-3 left-3 z-20">
+              <div className="bg-black/60 rounded-lg px-2 py-1 text-xs">
+                <p className="text-white font-bold">{myFighter.name}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <div className="w-20 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${
+                      (myPos.hp / myPos.maxHp) > 0.6 ? 'bg-emerald-500' :
+                      (myPos.hp / myPos.maxHp) > 0.3 ? 'bg-amber-500' : 'bg-red-500'
+                    }`} style={{ width: `${(myPos.hp / myPos.maxHp) * 100}%` }} />
+                  </div>
+                  <span className="text-emerald-400 font-bold tabular-nums">{Math.round(myPos.hp)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Kill count HUD */}
+            <div className="absolute top-3 right-3 z-20 bg-black/60 rounded-lg px-2 py-1 text-xs">
+              <span className="text-emerald-400 font-bold">{myPos.kills}K</span>
+              <span className="text-slate-500"> / </span>
+              <span className="text-red-400 font-bold">{myPos.deaths}D</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ARENA (top-down view) */}
+      {!fpsMode && (
       <div
-        className="relative w-full rounded-2xl border-2 border-amber-900/40 overflow-hidden select-none"
+        className="relative w-full rounded-2xl overflow-hidden select-none"
         style={{
-          height: Math.max(500, fighters.length * 20 + 250),
-          background: 'radial-gradient(ellipse at center, #1a1207 0%, #0c0a04 50%, #0f172a 100%)',
+          height: Math.max(500, fighters.length * 18 + 300),
+          background: 'radial-gradient(ellipse at center, #C2B280 0%, #A89060 35%, #8B7355 60%, #5C4033 90%, #3a2515 100%)',
+          border: '6px solid #5C4033',
+          boxShadow: 'inset 0 0 80px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.5)',
         }}
       >
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: 'radial-gradient(circle at 50% 50%, #b45309 0%, transparent 70%)',
+        {/* Vignette */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          boxShadow: 'inset 0 0 120px 50px rgba(0,0,0,0.45)',
         }} />
+
+        {/* Inner stone ring */}
+        <div className="absolute inset-3 rounded-xl pointer-events-none" style={{
+          border: '2px solid rgba(139,115,85,0.25)',
+        }} />
+
+        {/* Center circle */}
+        <div className="absolute pointer-events-none" style={{
+          left: '50%', top: '50%',
+          width: '25%', height: '25%',
+          transform: 'translate(-50%, -50%)',
+          border: '2px solid rgba(139,115,85,0.15)',
+          borderRadius: '50%',
+        }} />
+
+        {/* Corner torches */}
+        {[
+          { left: '4%', top: '4%' },
+          { left: '96%', top: '4%' },
+          { left: '4%', top: '96%' },
+          { left: '96%', top: '96%' },
+        ].map((p, i) => (
+          <div key={`torch-${i}`} className="absolute text-base pointer-events-none" style={{
+            left: p.left, top: p.top, transform: 'translate(-50%, -50%)',
+            animation: 'torch-flicker 1.5s ease-in-out infinite',
+            animationDelay: `${i * 0.4}s`,
+          }}>{'\u{1F525}'}</div>
+        ))}
+
+        {/* Pillar decorations */}
+        {[
+          { left: '50%', top: '3%' }, { left: '50%', top: '97%' },
+          { left: '3%', top: '50%' }, { left: '97%', top: '50%' },
+        ].map((p, i) => (
+          <div key={`pillar-${i}`} className="absolute text-sm opacity-25 pointer-events-none" style={{
+            left: p.left, top: p.top, transform: 'translate(-50%, -50%)',
+          }}>{'\u{1F3DB}\uFE0F'}</div>
+        ))}
+
+        {/* Arena title */}
         <div className="absolute top-3 left-0 right-0 text-center">
-          <p className="text-amber-800/30 text-[10px] font-bold uppercase tracking-[0.4em]">
-            &#9876;&#65039; The Arena &#9876;&#65039;
+          <p className="text-amber-900/30 text-[10px] font-bold uppercase tracking-[0.4em]"
+             style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
+            &#9876;&#65039; The Colosseum &#9876;&#65039;
           </p>
         </div>
 
@@ -786,11 +1017,12 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           </div>
         )}
       </div>
+      )}
 
       {/* Weapon Legend */}
-      <div className="bg-slate-800/60 rounded-xl border border-slate-700/50 p-4">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="h-px flex-1 bg-slate-700/50" />
+      <div className="bg-gradient-to-b from-stone-800/60 to-stone-900/60 rounded-xl border border-amber-900/20 p-4">
+        <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <span className="h-px flex-1 bg-amber-900/20" />
           Weapons &amp; Damage
           <span className="h-px flex-1 bg-slate-700/50" />
         </h3>
@@ -807,9 +1039,9 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
       </div>
 
       {/* Warrior Stats */}
-      <div className="bg-slate-800/60 rounded-xl border border-slate-700/50 p-4">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="h-px flex-1 bg-slate-700/50" />
+      <div className="bg-gradient-to-b from-stone-800/60 to-stone-900/60 rounded-xl border border-amber-900/20 p-4">
+        <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <span className="h-px flex-1 bg-amber-900/20" />
           Warriors
           <span className="h-px flex-1 bg-slate-700/50" />
         </h3>

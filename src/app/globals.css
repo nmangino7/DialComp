@@ -52,6 +52,13 @@ html { scroll-behavior: smooth; }
   75% { transform: translateX(2px); }
 }
 
+@keyframes torch-flicker {
+  0%, 100% { opacity: 0.35; transform: translate(-50%, -50%) scale(1); }
+  30% { opacity: 0.55; transform: translate(-50%, -50%) scale(1.1); }
+  60% { opacity: 0.4; transform: translate(-50%, -50%) scale(1.05); }
+  80% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.15); }
+}
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out both;
 }
