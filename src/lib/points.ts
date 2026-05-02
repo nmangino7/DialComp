@@ -1,6 +1,8 @@
 import { PointsEntry } from './types';
 import { POINT_VALUES } from './constants';
 
+export { POINT_VALUES };
+
 export function calculatePoints(entry: PointsEntry): number {
   const totalDials = entry.dials.morning + entry.dials.afternoon;
   const totalDnc = entry.dnc.morning + entry.dnc.afternoon;

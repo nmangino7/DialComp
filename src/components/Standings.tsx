@@ -26,6 +26,7 @@ interface PointsStandingsProps {
   onIncrement: (repId: string, metric: PointsMetric, period: Period) => void;
   onDecrement: (repId: string, metric: PointsMetric, period: Period) => void;
   onSet: (repId: string, metric: PointsMetric, period: Period, value: number) => void;
+  onRepClick?: (rep: Rep) => void;
 }
 
 type StandingsProps = TrackerStandingsProps | PointsStandingsProps;
@@ -134,12 +135,13 @@ function TrackerRow({
 }
 
 function PointsRow({
-  rep, entry, rank, isMe, isAdmin, onIncrement, onDecrement, onSet,
+  rep, entry, rank, isMe, isAdmin, onIncrement, onDecrement, onSet, onRepClick,
 }: {
   rep: Rep; entry: PointsEntry; rank: number; isMe: boolean; isAdmin: boolean;
   onIncrement: PointsStandingsProps['onIncrement'];
   onDecrement: PointsStandingsProps['onDecrement'];
   onSet: PointsStandingsProps['onSet'];
+  onRepClick?: (rep: Rep) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [period, setPeriod] = useState<Period>('morning');
@@ -176,6 +178,18 @@ function PointsRow({
           </span>
           <span className="text-[10px] text-slate-600 block uppercase tracking-wider">pts</span>
         </div>
+        {onRepClick && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onRepClick(rep); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onRepClick(rep); } }}
+            className="text-stone-500 hover:text-amber-400 text-base px-2 transition-colors cursor-pointer"
+            aria-label={`View ${rep.name}'s profile`}
+          >
+            \u{2139}️
+          </span>
+        )}
         {canEdit && (
           <span className={`text-slate-500 text-xs transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
         )}
@@ -271,6 +285,7 @@ export default function Standings(props: StandingsProps) {
             key={rep.id} rep={rep} entry={entry} rank={idx + 4}
             isMe={rep.id === props.myRepId} isAdmin={props.isAdmin}
             onIncrement={props.onIncrement} onDecrement={props.onDecrement} onSet={props.onSet}
+            onRepClick={props.onRepClick}
           />
         );
       })}

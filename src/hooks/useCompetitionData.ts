@@ -11,6 +11,9 @@ import {
 } from '@/lib/types';
 import { STORAGE_KEY, MY_REP_KEY } from '@/lib/constants';
 import { fetchState, sendAction } from '@/lib/api';
+import { emit } from '@/lib/eventBus';
+import { calculatePoints } from '@/lib/points';
+import { checkStatsAchievements } from '@/lib/achievements';
 
 function createTrackerEntry(repId: string): TrackerEntry {
   return {
@@ -210,6 +213,79 @@ export function useCompetitionData() {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* */ }
     }
   }, [state, mounted]);
+
+  // Track previous state for change detection (event emissions)
+  const prevStateRef = useRef<CompetitionState | null>(null);
+  useEffect(() => {
+    if (!mounted) return;
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
+    if (!prev) return;
+
+    // Check each rep for changes
+    state.pointsEntries.forEach((newEntry) => {
+      const prevEntry = prev.pointsEntries.find((e) => e.repId === newEntry.repId);
+      if (!prevEntry) return;
+      const rep = state.reps.find((r) => r.id === newEntry.repId);
+      if (!rep) return;
+
+      // Set scored?
+      const newSets = newEntry.sets.morning + newEntry.sets.afternoon;
+      const oldSets = prevEntry.sets.morning + prevEntry.sets.afternoon;
+      if (newSets > oldSets) {
+        emit({
+          type: 'set_scored',
+          message: `${rep.name} scored a set! (+10 pts)`,
+          repId: rep.id,
+          repName: rep.name,
+        });
+      }
+
+      // Milestones (every 25 points)
+      const newPoints = calculatePoints(newEntry);
+      const oldPoints = calculatePoints(prevEntry);
+      const milestones = [25, 50, 75, 100, 150, 200];
+      milestones.forEach((m) => {
+        if (oldPoints < m && newPoints >= m) {
+          emit({
+            type: 'milestone',
+            message: `${rep.name} hit ${m} points!`,
+            repId: rep.id,
+            repName: rep.name,
+          });
+        }
+      });
+    });
+
+    // Lead change
+    const sortPoints = (entries: PointsEntry[]) => [...entries].sort((a, b) => calculatePoints(b) - calculatePoints(a));
+    const prevTop = sortPoints(prev.pointsEntries.filter((e) => prev.pointsParticipantIds.includes(e.repId)))[0];
+    const newTop = sortPoints(state.pointsEntries.filter((e) => state.pointsParticipantIds.includes(e.repId)))[0];
+    if (newTop && (!prevTop || prevTop.repId !== newTop.repId) && calculatePoints(newTop) > 0) {
+      const rep = state.reps.find((r) => r.id === newTop.repId);
+      if (rep) {
+        emit({
+          type: 'took_lead',
+          message: `${rep.name} took the lead!`,
+          repId: rep.id,
+          repName: rep.name,
+        });
+      }
+    }
+
+    // Check my own achievements
+    if (myRepId) {
+      const myEntry = state.pointsEntries.find((e) => e.repId === myRepId);
+      if (myEntry) {
+        const totalSets = myEntry.sets.morning + myEntry.sets.afternoon;
+        const totalDials = myEntry.dials.morning + myEntry.dials.afternoon;
+        const totalPoints = calculatePoints(myEntry);
+        const isLeader = newTop?.repId === myRepId && totalPoints > 0;
+        checkStatsAchievements({ totalSets, totalDials, totalPoints, isLeader });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, mounted, myRepId]);
 
   // Poll every 5 seconds
   useEffect(() => {

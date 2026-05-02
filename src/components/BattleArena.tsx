@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Rep, PointsEntry } from '@/lib/types';
 import { calculatePoints } from '@/lib/points';
+import { emit } from '@/lib/eventBus';
+import { checkArenaAchievements } from '@/lib/achievements';
 
 interface BattleArenaProps {
   reps: Rep[];
@@ -89,6 +91,10 @@ interface FighterState {
   wanderAngle: number;
   wanderTimer: number;
   state: 'chasing' | 'attacking' | 'retreating' | 'wandering' | 'dead';
+  speedBoost: number;
+  damageBoost: number;
+  shield: number;
+  buffFlash: number;
 }
 
 interface DamagePopup {
@@ -125,6 +131,23 @@ interface WastedEvent {
   timer: number;
 }
 
+type PowerUpType = 'heal' | 'speed' | 'damage' | 'shield';
+
+interface PowerUp {
+  id: number;
+  type: PowerUpType;
+  x: number;
+  y: number;
+  bobPhase: number;
+}
+
+const POWERUP_INFO: Record<PowerUpType, { icon: string; color: string; ring: string; label: string }> = {
+  heal:   { icon: '\u{2764}️', color: '#ef4444', ring: 'rgba(239,68,68,0.6)',  label: 'Heal +30 HP' },
+  speed:  { icon: '\u{26A1}',       color: '#fbbf24', ring: 'rgba(251,191,36,0.6)', label: 'Speed Boost' },
+  damage: { icon: '\u{2B50}',       color: '#f97316', ring: 'rgba(249,115,22,0.6)', label: 'Damage Up' },
+  shield: { icon: '\u{1F6E1}️',color: '#3b82f6', ring: 'rgba(59,130,246,0.6)', label: 'Shield' },
+};
+
 const CHAR_STORAGE_KEY = 'dial-comp-characters';
 
 function loadCharacters(): Record<string, string> {
@@ -154,6 +177,9 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
   const popupsRef = useRef<DamagePopup[]>([]);
   const clashesRef = useRef<ClashEffect[]>([]);
   const bloodRef = useRef<BloodParticle[]>([]);
+  const powerUpsRef = useRef<PowerUp[]>([]);
+  const powerUpSpawnRef = useRef<number>(0);
+  const arenaKillsRef = useRef<Map<string, number>>(new Map());
   const popupIdRef = useRef(0);
   const [, forceUpdate] = useState(0);
   const animRef = useRef<number>(0);
@@ -238,6 +264,10 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           wanderAngle: Math.random() * Math.PI * 2,
           wanderTimer: 1 + Math.random() * 2,
           state: 'wandering',
+          speedBoost: 0,
+          damageBoost: 0,
+          shield: 0,
+          buffFlash: 0,
         });
       } else {
         const pos = map.get(f.id)!;
@@ -277,6 +307,26 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
         }))
         .filter((b) => b.timer > 0);
 
+      // Update power-up bobbing animation
+      powerUpsRef.current = powerUpsRef.current.map((p) => ({
+        ...p,
+        bobPhase: p.bobPhase + dt * 3,
+      }));
+
+      // Spawn new powerup every ~7-12 seconds
+      powerUpSpawnRef.current -= dt;
+      if (powerUpSpawnRef.current <= 0 && powerUpsRef.current.length < 4) {
+        const types: PowerUpType[] = ['heal', 'speed', 'damage', 'shield'];
+        powerUpsRef.current.push({
+          id: popupIdRef.current++,
+          type: types[Math.floor(Math.random() * types.length)],
+          x: 15 + Math.random() * 70,
+          y: 20 + Math.random() * 60,
+          bobPhase: Math.random() * Math.PI * 2,
+        });
+        powerUpSpawnRef.current = 7 + Math.random() * 5;
+      }
+
       // Update wasted overlay
       if (wastedRef.current) {
         wastedRef.current = { ...wastedRef.current, timer: wastedRef.current.timer - dt };
@@ -314,6 +364,44 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
 
         if (pos.hitTimer > 0) pos.hitTimer -= dt;
         pos.attackCooldown -= dt;
+        if (pos.speedBoost > 0) pos.speedBoost = Math.max(0, pos.speedBoost - dt);
+        if (pos.damageBoost > 0) pos.damageBoost = Math.max(0, pos.damageBoost - dt);
+        if (pos.shield > 0) pos.shield = Math.max(0, pos.shield - dt);
+        if (pos.buffFlash > 0) pos.buffFlash = Math.max(0, pos.buffFlash - dt);
+
+        // POWERUP PICKUP: check collisions with active powerups
+        for (let i = powerUpsRef.current.length - 1; i >= 0; i--) {
+          const p = powerUpsRef.current[i];
+          const pdx = p.x - pos.x;
+          const pdy = p.y - pos.y;
+          const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
+          if (pDist < 5) {
+            // Pick it up
+            if (p.type === 'heal') {
+              pos.hp = Math.min(pos.maxHp, pos.hp + 30);
+            } else if (p.type === 'speed') {
+              pos.speedBoost = 6;
+            } else if (p.type === 'damage') {
+              pos.damageBoost = 6;
+            } else if (p.type === 'shield') {
+              pos.shield = 6;
+            }
+            pos.buffFlash = 0.4;
+            powerUpsRef.current.splice(i, 1);
+            // Emit event
+            const collectName = f.name;
+            emit({
+              type: 'powerup_collected',
+              message: `${collectName} grabbed ${POWERUP_INFO[p.type].label}!`,
+              repId: f.id,
+              repName: collectName,
+            });
+            // Achievement (only for the user's fighter)
+            if (myRepId && f.id === myRepId) {
+              checkArenaAchievements({ kills: arenaKillsRef.current.get(f.id) || 0, collectedPowerup: true });
+            }
+          }
+        }
 
         // SEPARATION FORCE (reduced radius: 7)
         fighters.forEach((other) => {
@@ -437,8 +525,9 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (pos.attackTarget && dist > 3) {
-          pos.x += (dx / dist) * f.speed * dt;
-          pos.y += (dy / dist) * f.speed * dt;
+          const moveSpeed = f.speed * (pos.speedBoost > 0 ? 1.7 : 1);
+          pos.x += (dx / dist) * moveSpeed * dt;
+          pos.y += (dy / dist) * moveSpeed * dt;
           pos.facing = dx > 0 ? 'right' : 'left';
           pos.state = 'chasing';
         }
@@ -474,7 +563,10 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
               } else {
                 // HIT!
                 const isCrit = Math.random() < 0.15;
-                const damage = isCrit ? f.dmg * 2 : f.dmg;
+                const baseDmg = pos.damageBoost > 0 ? f.dmg * 1.7 : f.dmg;
+                let damage = isCrit ? Math.round(baseDmg * 2) : Math.round(baseDmg);
+                // Shield blocks 50% damage
+                if (tp.shield > 0) damage = Math.round(damage * 0.5);
                 tp.hp = Math.max(0, tp.hp - damage);
                 tp.hitTimer = 0.25;
                 pos.attackCooldown = 0.8 + Math.random() * 0.4;
@@ -570,6 +662,22 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
                     killerName: f.name,
                     timer: 3.0,
                   };
+
+                  // Track kill count for achievement check
+                  arenaKillsRef.current.set(f.id, (arenaKillsRef.current.get(f.id) || 0) + 1);
+                  // Emit kill event
+                  emit({
+                    type: 'kill',
+                    message: `${f.name} killed ${killedFighter?.name || '???'}!`,
+                    repId: f.id,
+                    repName: f.name,
+                    victimName: killedFighter?.name,
+                    weapon: f.weapon.icon,
+                  });
+                  // Achievement (only for me)
+                  if (myRepId && f.id === myRepId) {
+                    checkArenaAchievements({ kills: arenaKillsRef.current.get(f.id) || 0 });
+                  }
                 }
               }
             }
@@ -844,6 +952,38 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
           </p>
         </div>
 
+        {/* Power-ups */}
+        {powerUpsRef.current.map((p) => {
+          const info = POWERUP_INFO[p.type];
+          const bobY = Math.sin(p.bobPhase) * 1.5;
+          return (
+            <div
+              key={`pwr-${p.id}`}
+              className="absolute pointer-events-none"
+              style={{
+                left: `${p.x}%`,
+                top: `${p.y + bobY}%`,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 5,
+              }}
+            >
+              <div
+                className="rounded-full flex items-center justify-center text-2xl"
+                style={{
+                  width: 36,
+                  height: 36,
+                  backgroundColor: 'rgba(0,0,0,0.4)',
+                  border: `2px solid ${info.color}`,
+                  boxShadow: `0 0 15px 4px ${info.ring}`,
+                  animation: 'pulse-glow 1.5s ease-in-out infinite',
+                }}
+              >
+                {info.icon}
+              </div>
+            </div>
+          );
+        })}
+
         {/* Blood particles */}
         {bloodRef.current.map((b) => (
           <div
@@ -932,6 +1072,20 @@ export default function BattleArena({ reps, entries, participantIds, myRepId }: 
               }}
             >
               <div className="flex flex-col items-center" style={{ transform: pos.facing === 'left' ? 'scaleX(-1)' : undefined }}>
+                {/* Active buff indicators */}
+                {(pos.speedBoost > 0 || pos.damageBoost > 0 || pos.shield > 0) && !isDead && (
+                  <div className="flex gap-0.5 mb-0.5 text-[10px] leading-none">
+                    {pos.speedBoost > 0 && <span style={{ filter: 'drop-shadow(0 0 3px #fbbf24)' }}>{'\u{26A1}'}</span>}
+                    {pos.damageBoost > 0 && <span style={{ filter: 'drop-shadow(0 0 3px #f97316)' }}>{'\u{2B50}'}</span>}
+                    {pos.shield > 0 && <span style={{ filter: 'drop-shadow(0 0 3px #3b82f6)' }}>{'\u{1F6E1}️'}</span>}
+                  </div>
+                )}
+                {/* Buff flash ring */}
+                {pos.buffFlash > 0 && (
+                  <div className="absolute inset-0 rounded-full pointer-events-none" style={{
+                    boxShadow: `0 0 12px 6px rgba(255, 255, 200, ${pos.buffFlash})`,
+                  }} />
+                )}
                 {/* Name + HP number */}
                 <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md mb-0.5 whitespace-nowrap ${
                   isMe ? 'bg-blue-500/30' :

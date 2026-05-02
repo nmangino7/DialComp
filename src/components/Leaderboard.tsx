@@ -1,6 +1,7 @@
 'use client';
 
 import { Rep } from '@/lib/types';
+import AnimatedNumber from './AnimatedNumber';
 
 interface LeaderboardEntry {
   rep: Rep;
@@ -10,6 +11,7 @@ interface LeaderboardEntry {
 
 interface LeaderboardProps {
   entries: LeaderboardEntry[];
+  onRepClick?: (rep: Rep) => void;
 }
 
 const PODIUM = [
@@ -42,7 +44,7 @@ const PODIUM = [
   },
 ];
 
-export default function Leaderboard({ entries }: LeaderboardProps) {
+export default function Leaderboard({ entries, onRepClick }: LeaderboardProps) {
   if (entries.length === 0) {
     return (
       <div className="text-center py-12 animate-fade-in">
@@ -60,9 +62,10 @@ export default function Leaderboard({ entries }: LeaderboardProps) {
       {top3.map((entry, idx) => {
         const style = PODIUM[idx];
         return (
-          <div
+          <button
             key={entry.rep.id}
-            className={`flex items-center gap-4 px-5 py-4 rounded-2xl bg-gradient-to-r ${style.bg} border transition-all animate-fade-in ${style.glow}`}
+            onClick={() => onRepClick?.(entry.rep)}
+            className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl bg-gradient-to-r ${style.bg} border transition-all animate-fade-in ${style.glow} btn-press`}
             style={{ animationDelay: `${idx * 80}ms` }}
           >
             <div className="flex flex-col items-center min-w-[44px]">
@@ -75,13 +78,13 @@ export default function Leaderboard({ entries }: LeaderboardProps) {
             </div>
             <div className="text-right flex flex-col items-end">
               <p className={`font-black tabular-nums ${style.valueSize} ${style.text} leading-none`}>
-                {entry.value}
+                <AnimatedNumber value={entry.value} />
               </p>
               <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-1 font-semibold">
                 {entry.label}
               </p>
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

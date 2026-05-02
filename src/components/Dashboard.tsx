@@ -1,14 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCompetitionData } from '@/hooks/useCompetitionData';
-import { TabType } from '@/lib/types';
+import { TabType, Rep, PointsEntry } from '@/lib/types';
 import { calculatePoints } from '@/lib/points';
+import { isSoundEnabled, setSoundEnabled } from '@/lib/sounds';
+import { getUnlocked, ACHIEVEMENTS } from '@/lib/achievements';
+import { emit } from '@/lib/eventBus';
 import JoinModal from './JoinModal';
 import Leaderboard from './Leaderboard';
 import MyStats from './MyStats';
 import Standings from './Standings';
 import BattleArena from './BattleArena';
+import ActivityFeed from './ActivityFeed';
+import AchievementToast from './AchievementToast';
+import Confetti from './Confetti';
+import SoundManager from './SoundManager';
+import StickyHud from './StickyHud';
+import ProfileModal from './ProfileModal';
 
 export default function Dashboard() {
   const {
@@ -28,6 +37,13 @@ export default function Dashboard() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showAddRep, setShowAddRep] = useState(false);
+  const [soundOn, setSoundOnState] = useState(true);
+  const [profileTarget, setProfileTarget] = useState<{ rep: Rep; entry: PointsEntry; rank: number } | null>(null);
+
+  // Sound state init
+  useEffect(() => {
+    setSoundOnState(isSoundEnabled());
+  }, []);
 
   if (!mounted) {
     return (
@@ -50,6 +66,13 @@ export default function Dashboard() {
     setShowAddRep(false);
   };
 
+  const handleToggleSound = () => {
+    const next = !soundOn;
+    setSoundOnState(next);
+    setSoundEnabled(next);
+    if (next) emit({ type: 'click', message: '' });
+  };
+
   // Sorted entries for points
   const pointsActive = state.pointsEntries.filter((e) =>
     state.pointsParticipantIds.includes(e.repId),
@@ -69,12 +92,51 @@ export default function Dashboard() {
   const myPointsEntry = state.pointsEntries.find((e) => e.repId === myRepId);
   const myPointsRank = pointsSorted.findIndex((e) => e.repId === myRepId) + 1;
 
+  // Profile click handler
+  const openProfile = (rep: Rep) => {
+    const entry = state.pointsEntries.find((e) => e.repId === rep.id);
+    if (!entry) return;
+    const rank = pointsSorted.findIndex((e) => e.repId === rep.id) + 1;
+    setProfileTarget({ rep, entry, rank: rank || pointsActive.length });
+  };
+
+  // Quick actions for sticky HUD
+  const handleQuickSet = () => {
+    if (!myRepId) return;
+    const period = new Date().getHours() < 12 ? 'morning' : 'afternoon';
+    incrementPoints(myRepId, 'sets', period);
+  };
+  const handleQuickDial = () => {
+    if (!myRepId) return;
+    const period = new Date().getHours() < 12 ? 'morning' : 'afternoon';
+    incrementPoints(myRepId, 'dials', period);
+    emit({ type: 'increment', message: '' });
+  };
+
+  const myAchievements = getUnlocked()
+    .map((id) => ACHIEVEMENTS[id]?.title)
+    .filter(Boolean) as string[];
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
+      {/* Background effect layers */}
+      <SoundManager />
+      <Confetti />
+      <AchievementToast />
+
       {/* Join Modal */}
       <JoinModal open={needsJoin} onJoin={handleJoin} />
 
-      {/* Header — gladiator stone theme */}
+      {/* Profile Modal */}
+      <ProfileModal
+        rep={profileTarget?.rep ?? null}
+        entry={profileTarget?.entry ?? null}
+        rank={profileTarget?.rank ?? null}
+        achievements={profileTarget?.rep.id === myRepId ? myAchievements : []}
+        onClose={() => setProfileTarget(null)}
+      />
+
+      {/* Header */}
       <header className="bg-gradient-to-b from-stone-900 via-slate-900 to-slate-900 border-b-2 border-amber-900/50 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-lg mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
@@ -88,29 +150,38 @@ export default function Dashboard() {
                   month: 'short',
                   day: 'numeric',
                 })}
-                {' \u00B7 '}
+                {' · '}
                 <span className="text-amber-500">{state.reps.length} gladiators</span>
-                {' \u00B7 '}
+                {' · '}
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-emerald-500"> live</span>
               </p>
             </div>
-            <button
-              onClick={() => setIsAdmin(!isAdmin)}
-              className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
-                isAdmin
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-stone-800 text-stone-500 hover:bg-stone-700'
-              }`}
-            >
-              Admin
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleToggleSound}
+                aria-label={soundOn ? 'Mute sounds' : 'Unmute sounds'}
+                className="px-2 py-1 rounded-lg text-base bg-stone-800 hover:bg-stone-700 transition-colors"
+              >
+                {soundOn ? '\u{1F50A}' : '\u{1F507}'}
+              </button>
+              <button
+                onClick={() => setIsAdmin(!isAdmin)}
+                className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                  isAdmin
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-stone-800 text-stone-500 hover:bg-stone-700'
+                }`}
+              >
+                Admin
+              </button>
+            </div>
           </div>
 
           {/* 2 Tabs */}
           <div className="flex bg-stone-950 rounded-lg p-1 mt-3 gap-0.5">
             <button
-              onClick={() => setActiveTab('points')}
+              onClick={() => { setActiveTab('points'); emit({ type: 'click', message: '' }); }}
               className={`flex-1 py-2 rounded-md text-xs font-bold transition-all btn-press ${
                 activeTab === 'points'
                   ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
@@ -120,7 +191,7 @@ export default function Dashboard() {
               &#9876;&#65039; Points
             </button>
             <button
-              onClick={() => setActiveTab('battle')}
+              onClick={() => { setActiveTab('battle'); emit({ type: 'click', message: '' }); }}
               className={`flex-1 py-2 rounded-md text-xs font-bold transition-all btn-press ${
                 activeTab === 'battle'
                   ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
@@ -134,21 +205,25 @@ export default function Dashboard() {
       </header>
 
       {/* Content */}
-      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-24">
+      <main className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-32">
         {/* Battle Arena Tab */}
         {activeTab === 'battle' && (
-          <BattleArena
-            reps={state.reps}
-            entries={state.pointsEntries}
-            participantIds={state.pointsParticipantIds}
-            myRepId={myRepId}
-          />
+          <>
+            <BattleArena
+              reps={state.reps}
+              entries={state.pointsEntries}
+              participantIds={state.pointsParticipantIds}
+              myRepId={myRepId}
+            />
+            <ActivityFeed />
+          </>
         )}
 
         {/* Points Tab */}
         {activeTab === 'points' && (
           <>
-            <Leaderboard entries={pointsLeaderboard} />
+            <Leaderboard entries={pointsLeaderboard} onRepClick={openProfile} />
+            <ActivityFeed />
 
             {myRep && myPointsEntry && (
               <>
@@ -206,6 +281,7 @@ export default function Dashboard() {
               onIncrement={incrementPoints}
               onDecrement={decrementPoints}
               onSet={setPoints}
+              onRepClick={openProfile}
             />
           </>
         )}
@@ -239,6 +315,18 @@ export default function Dashboard() {
           )}
         </div>
       </main>
+
+      {/* Sticky bottom HUD */}
+      {hasJoined && myRep && myPointsEntry && (
+        <StickyHud
+          rep={myRep}
+          entry={myPointsEntry}
+          rank={myPointsRank || pointsActive.length}
+          totalReps={pointsActive.length}
+          onQuickSet={handleQuickSet}
+          onQuickDial={handleQuickDial}
+        />
+      )}
 
       {/* Add Rep Modal */}
       {showAddRep && (
